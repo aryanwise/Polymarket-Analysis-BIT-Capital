@@ -1,0 +1,6 @@
+requests
+apscheduler 
+python-dotenv
+supabase
+google-genai
+# apscheduler
