@@ -6,7 +6,7 @@ Dark Bloomberg-style dashboard
 """
 import sys
 import os
-import json
+
 # Add project root to path so utils/ can be found
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import yfinance as yf
@@ -279,7 +279,6 @@ def load_event_markets(event_id: str) -> list[dict]:
     return res.data or []
 
 
-
 @st.cache_data(ttl=60)
 def load_stats():
     markets = supabase.table("markets").select("id", count="exact").execute()
@@ -407,9 +406,12 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # ════════════════════════════════════════════════════════════
 
 with tab1:
-    st.markdown('<div class="section-header">Market Overview</div>', unsafe_allow_html=True)
+    import plotly.graph_objects as go
+    import plotly.express as px
+    from plotly.subplots import make_subplots
 
-    # Top stat row
+    # ── Pipeline stats ────────────────────────────────────────
+    st.markdown('<div class="section-header">Pipeline Status</div>', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Markets Tracked",   f"{stats['markets']:,}")
     col2.metric("Active Signals",    f"{stats['signals']:,}")
@@ -417,46 +419,274 @@ with tab1:
     col4.metric("Reports Generated", f"{stats['reports']:,}")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="section-header">Top Signals Today</div>', unsafe_allow_html=True)
 
-    signals = load_signals(limit=50)
+    # ── Fetch historical prices for all holdings ──────────────
+    st.markdown('<div class="section-header">BIT Capital Holdings Screener</div>', unsafe_allow_html=True)
 
-    if not signals:
-        st.info("No signals yet — run the scraper and filter pipeline first.")
-    else:
-        # Sentiment summary bar
-        bull = sum(1 for s in signals if s.get("sentiment") == "Bullish")
-        bear = sum(1 for s in signals if s.get("sentiment") == "Bearish")
-        neut = sum(1 for s in signals if s.get("sentiment") == "Neutral")
-        total = max(len(signals), 1)
+    @st.cache_data(ttl=300)
+    def fetch_historical_prices(period="1mo"):
+        tickers = list(HOLDINGS_META.keys())
+        try:
+            data = yf.download(
+                tickers,
+                period=period,
+                interval="1d",
+                group_by="ticker",
+                auto_adjust=True,
+                progress=False,
+            )
+            result = {}
+            for ticker in tickers:
+                try:
+                    df = data[ticker] if len(tickers) > 1 else data
+                    if not df.empty:
+                        result[ticker] = df["Close"].dropna()
+                except Exception:
+                    continue
+            return result
+        except Exception:
+            return {}
 
-        c1, c2, c3, _ = st.columns([1, 1, 1, 3])
-        c1.metric("🟢 Bullish", bull, f"{bull/total:.0%}")
-        c2.metric("🔴 Bearish", bear, f"{bear/total:.0%}")
-        c3.metric("⚪ Neutral", neut, f"{neut/total:.0%}")
+    # Period selector
+    period_map = {"1W": "5d", "1M": "1mo", "3M": "3mo", "6M": "6mo"}
+    sel_period = st.radio(
+        "Time period",
+        options=list(period_map.keys()),
+        index=1,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
 
-        st.markdown("<br>", unsafe_allow_html=True)
+    hist = fetch_historical_prices(period=period_map[sel_period])
+    live = fetch_live_prices()
 
-        # Top 8 signal cards
-        for s in signals[:8]:
-            sentiment = s.get("sentiment", "Neutral")
-            css_class = sentiment_class(sentiment)
-            badge     = SENTIMENT_BADGE.get(sentiment, "")
+    # ── Animated ticker tape ──────────────────────────────────
+    tape_items = []
+    for ticker, name in HOLDINGS_META.items():
+        p   = live.get(ticker, {})
+        px_ = p.get("price", 0)
+        chg = p.get("change_pct", 0)
+        arrow = "▲" if chg >= 0 else "▼"
+        color = "#22c55e" if chg >= 0 else "#ef4444"
+        tape_items.append(
+            f'<span style="margin-right:40px; white-space:nowrap;">'
+            f'<span style="font-weight:600; color:#e2e8f0;">{ticker}</span>'
+            f'&nbsp;<span style="color:#94a3b8; font-size:11px;">{name}</span>'
+            f'&nbsp;&nbsp;<span style="color:#f0f6ff;">${px_:,.2f}</span>'
+            f'&nbsp;<span style="color:{color}; font-size:12px;">{arrow} {abs(chg):.2f}%</span>'
+            f'</span>'
+        )
 
-            st.markdown(f"""
-            <div class="signal-card {css_class}">
-                <div class="signal-question">{s.get('question','')}</div>
-                <div class="signal-meta">
-                    {badge} &nbsp;
-                    <b style="color:#e2e8f0">{s.get('ticker','?')}</b>
-                    &nbsp;·&nbsp; {s.get('company_name','')}
-                    &nbsp;·&nbsp; Score: <b style="color:#f0f6ff">{s.get('impact_score','?')}/10</b>
-                    &nbsp;·&nbsp; YES: <b style="color:#60a5fa">{fmt_prob(s.get('yes_price',0))}</b>
-                    &nbsp;·&nbsp; Vol: {fmt_vol(s.get('volume',0))}
-                    &nbsp;·&nbsp; {s.get('category','')}
+    tape_html = "".join(tape_items) + "&nbsp;&nbsp;&nbsp;" + "".join(tape_items)
+
+    st.markdown(f"""
+    <div style="overflow:hidden; background:#0d1117; border:1px solid #1e2035;
+                border-radius:8px; padding:12px 0; margin-bottom:20px;">
+        <div style="font-family:IBM Plex Mono,monospace; font-size:13px;
+                    white-space:nowrap; display:inline-block;
+                    animation:ticker 40s linear infinite;"
+             id="ticker-tape">
+            {tape_html}
+        </div>
+    </div>
+    <style>
+    @keyframes ticker {{
+        0%   {{ transform: translateX(0); }}
+        100% {{ transform: translateX(-50%); }}
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Screener table ────────────────────────────────────────
+    screener_rows = []
+    for ticker, name in HOLDINGS_META.items():
+        p   = live.get(ticker, {})
+        px_ = p.get("price", 0)
+        chg = p.get("change_pct", 0)
+
+        # 30-day return from historical
+        hist_series = hist.get(ticker)
+        ret_30d = 0.0
+        if hist_series is not None and len(hist_series) >= 2:
+            ret_30d = ((hist_series.iloc[-1] - hist_series.iloc[0]) / hist_series.iloc[0]) * 100
+
+        # Signal sentiment for this ticker
+        sigs = load_signals(limit=200)
+        ticker_sigs  = [s for s in sigs if s.get("ticker") == ticker]
+        bull_count   = sum(1 for s in ticker_sigs if s.get("sentiment") == "Bullish")
+        bear_count   = sum(1 for s in ticker_sigs if s.get("sentiment") == "Bearish")
+        if bull_count > bear_count:
+            pm_signal = "🟢 Bullish"
+        elif bear_count > bull_count:
+            pm_signal = "🔴 Bearish"
+        elif ticker_sigs:
+            pm_signal = "⚪ Neutral"
+        else:
+            pm_signal = "— No signal"
+
+        screener_rows.append({
+            "Ticker":       ticker,
+            "Company":      name,
+            "Price":        f"${px_:,.2f}",
+            "1D":           f"{'▲' if chg >= 0 else '▼'} {abs(chg):.2f}%",
+            f"{sel_period} Return": f"{'▲' if ret_30d >= 0 else '▼'} {abs(ret_30d):.1f}%",
+            "PM Signal":    pm_signal,
+            "# Signals":    len(ticker_sigs),
+        })
+
+    st.dataframe(
+        pd.DataFrame(screener_rows),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Time series chart ─────────────────────────────────────
+    st.markdown('<div class="section-header">Price Performance — Time Series</div>', unsafe_allow_html=True)
+
+    # Ticker selector for chart
+    chart_tickers = st.multiselect(
+        "Select tickers to compare",
+        options=list(HOLDINGS_META.keys()),
+        default=["IREN", "MSFT", "GOOGL", "HUT"],
+        label_visibility="visible",
+    )
+
+    if chart_tickers and hist:
+        # Normalise to 100 at start for fair comparison
+        normalize = st.toggle("Normalize to 100 (compare performance)", value=True)
+
+        fig = go.Figure()
+
+        colors = [
+            "#60a5fa","#22c55e","#f59e0b","#ef4444",
+            "#a78bfa","#34d399","#fb923c","#f472b6",
+            "#38bdf8","#4ade80",
+        ]
+
+        for i, ticker in enumerate(chart_tickers):
+            series = hist.get(ticker)
+            if series is None or series.empty:
+                continue
+
+            color  = colors[i % len(colors)]
+            dates  = series.index
+            values = series.values
+
+            if normalize:
+                values = (values / values[0]) * 100
+
+            # Add signal markers on the chart
+            ticker_sigs = [s for s in load_signals(200) if s.get("ticker") == ticker]
+
+            fig.add_trace(go.Scatter(
+                x=dates,
+                y=values,
+                mode="lines",
+                name=f"{ticker} — {HOLDINGS_META[ticker]}",
+                line=dict(color=color, width=2),
+                hovertemplate=(
+                    f"<b>{ticker}</b><br>"
+                    f"Date: %{{x|%b %d, %Y}}<br>"
+                    f"{'Index' if normalize else 'Price'}: %{{y:.2f}}<br>"
+                    "<extra></extra>"
+                ),
+            ))
+
+        fig.update_layout(
+            paper_bgcolor="#0a0a0f",
+            plot_bgcolor="#0d1117",
+            font=dict(family="IBM Plex Mono", color="#94a3b8", size=11),
+            legend=dict(
+                bgcolor="#111827",
+                bordercolor="#1e2035",
+                borderwidth=1,
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="left",
+                x=0,
+            ),
+            xaxis=dict(
+                gridcolor="#1e2035",
+                linecolor="#1e2035",
+                tickformat="%b %d",
+                showspikes=True,
+                spikecolor="#334155",
+                spikethickness=1,
+            ),
+            yaxis=dict(
+                gridcolor="#1e2035",
+                linecolor="#1e2035",
+                tickprefix="" if normalize else "$",
+                showspikes=True,
+                spikecolor="#334155",
+                spikethickness=1,
+            ),
+            hovermode="x unified",
+            margin=dict(l=0, r=0, t=40, b=0),
+            height=420,
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # ── Mini sparklines below chart ───────────────────────
+        st.markdown('<div class="section-header" style="margin-top:16px;">Individual Performance</div>', unsafe_allow_html=True)
+
+        spark_cols = st.columns(len(chart_tickers))
+        for i, ticker in enumerate(chart_tickers):
+            series = hist.get(ticker)
+            if series is None or series.empty:
+                continue
+
+            p      = live.get(ticker, {})
+            price  = p.get("price", 0)
+            chg    = p.get("change_pct", 0)
+            color  = colors[i % len(colors)]
+            is_up  = series.iloc[-1] >= series.iloc[0]
+            line_c = "#22c55e" if is_up else "#ef4444"
+
+            spark = go.Figure(go.Scatter(
+                x=series.index,
+                y=series.values,
+                mode="lines",
+                line=dict(color=line_c, width=1.5),
+                fill="tozeroy",
+                fillcolor=f"rgba({'34,197,94' if is_up else '239,68,68'},0.08)",
+            ))
+            spark.update_layout(
+                paper_bgcolor="#111827",
+                plot_bgcolor="#111827",
+                margin=dict(l=0, r=0, t=0, b=0),
+                height=70,
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                showlegend=False,
+            )
+
+            ret = ((series.iloc[-1] - series.iloc[0]) / series.iloc[0]) * 100
+            chg_str = f"{'▲' if chg >= 0 else '▼'} {abs(chg):.2f}%"
+            ret_str = f"{'▲' if ret >= 0 else '▼'} {abs(ret):.1f}%"
+            chg_col = "#22c55e" if chg >= 0 else "#ef4444"
+            ret_col = "#22c55e" if ret >= 0 else "#ef4444"
+
+            with spark_cols[i]:
+                st.markdown(f"""
+                <div style="background:#111827; border:1px solid #1e2035;
+                            border-radius:8px; padding:12px 14px 4px;">
+                    <div style="font-family:IBM Plex Mono,monospace; font-size:13px;
+                                font-weight:600; color:{color};">{ticker}</div>
+                    <div style="font-family:IBM Plex Mono,monospace; font-size:16px;
+                                color:#f0f6ff; margin:2px 0;">${price:,.2f}</div>
+                    <div style="font-size:11px; color:{chg_col};">{chg_str} today</div>
+                    <div style="font-size:11px; color:{ret_col};">{ret_str} {sel_period}</div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
+                st.plotly_chart(spark, use_container_width=True, config={"displayModeBar": False})
+
+    else:
+        st.info("Select at least one ticker to display the chart.")
 
 
 # ════════════════════════════════════════════════════════════
@@ -789,70 +1019,46 @@ with tab5:
                     direction  = result.get("direction", "Neutral")
                     from_cache = result.get("from_cache", False)
                     dir_color  = {"Bullish":"#22c55e","Bearish":"#ef4444","Neutral":"#64748b"}.get(direction,"#64748b")
+                    sources    = result.get("source_urls") or []
 
-                    # Normalize sources
-                    sources = result.get("source_urls") or []
-                    if isinstance(sources, str):
-                        try:
-                            import json
-                            sources = json.loads(sources)
-                        except Exception:
-                            sources = []
-                    sources = [s for s in sources if s]
+                    # Build sources HTML to embed inside the box
+                    sources_html = ""
+                    if sources:
+                        links = "".join(
+                            f'<a href="{url}" target="_blank" style="display:block; '
+                            f'font-family:IBM Plex Mono,monospace; font-size:11px; '
+                            f'color:#3b82f6; text-decoration:none; margin-bottom:4px; '
+                            f'word-break:break-all;">↗ {url[:90]}</a>'
+                            for url in sources[:4]
+                        )
+                        sources_html = f"""
+                        <div style="margin-top:16px; padding-top:14px;
+                                    border-top:1px solid #1e3a5f;">
+                            <div style="font-family:IBM Plex Mono,monospace; font-size:10px;
+                                        letter-spacing:0.12em; color:#334155;
+                                        text-transform:uppercase; margin-bottom:8px;">
+                                News Sources
+                            </div>
+                            {links}
+                        </div>"""
 
-                    # ── Header ──────────────────────────────────────────
                     st.markdown(f"""
-                    <div style="background:#0d1117; border:1px solid #1e3a5f;
-                                border-radius:8px 8px 0 0; padding:14px 20px;
-                                display:flex; justify-content:space-between;">
-                        <div style="font-family:IBM Plex Mono,monospace; font-size:11px; color:#475569;">
-                            DEEP DIVE — {s.get('ticker')} &nbsp;·&nbsp;
-                            {'⚡ Live Analysis' if not from_cache else '📦 Cached'}
+                    <div class="deep-dive-box">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:14px;">
+                            <div style="font-family:IBM Plex Mono,monospace; font-size:11px; color:#475569;">
+                                DEEP DIVE — {s.get('ticker')} &nbsp;·&nbsp;
+                                {'⚡ Live Analysis' if not from_cache else '📦 Cached'}
+                            </div>
+                            <div style="font-family:IBM Plex Mono,monospace; font-size:12px;
+                                        font-weight:600; color:{dir_color};">
+                                {direction.upper()}
+                            </div>
                         </div>
-                        <div style="font-family:IBM Plex Mono,monospace; font-size:12px;
-                                    font-weight:600; color:{dir_color};">
-                            {direction.upper()}
+                        <div style="font-size:13px; line-height:1.7; color:#cbd5e1;">
+                            {result.get('analysis_text','').replace(chr(10), '<br>')}
                         </div>
+                        {sources_html}
                     </div>
                     """, unsafe_allow_html=True)
-
-                    # ── Analysis text (st.markdown renders ## and * correctly) ──
-                    with st.container():
-                        st.markdown(
-                            f'<div style="background:#0d1117; border-left:1px solid #1e3a5f; '
-                            f'border-right:1px solid #1e3a5f; padding:16px 20px; '
-                            f'font-size:13px; line-height:1.7; color:#cbd5e1;">'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
-                        # Render markdown inside a styled container
-                        st.markdown(result.get("analysis_text", ""))
-
-                    # ── Sources ─────────────────────────────────────────
-                    if sources:
-                        st.markdown(
-                            '<div style="background:#0d1117; border:1px solid #1e3a5f; '
-                            'border-top:1px solid #1e3a5f; border-radius:0 0 8px 8px; '
-                            'padding:14px 20px;">'
-                            '<div style="font-family:IBM Plex Mono,monospace; font-size:10px; '
-                            'letter-spacing:0.12em; color:#334155; text-transform:uppercase; '
-                            'margin-bottom:8px;">News Sources</div>'
-                            + "".join(
-                                f'<a href="{url}" target="_blank" style="display:block; '
-                                f'font-family:IBM Plex Mono,monospace; font-size:11px; '
-                                f'color:#3b82f6; text-decoration:none; margin-bottom:4px; '
-                                f'word-break:break-all;">↗ {url[:90]}</a>'
-                                for url in sources[:4]
-                            )
-                            + '</div>',
-                            unsafe_allow_html=True
-                        )
-                    else:
-                        st.markdown(
-                            '<div style="background:#0d1117; border:1px solid #1e3a5f; '
-                            'border-radius:0 0 8px 8px; padding:10px 20px; '
-                            'font-size:11px; color:#334155;">No news sources found.</div>',
-                            unsafe_allow_html=True
-                        )
 
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
