@@ -1,209 +1,192 @@
-"""
-Production-ready Polymarket ingestion pipeline.
-
-Features:
-- Pagination over Gamma API
-- Retry + exponential backoff
-- Safe JSON parsing
-- Batch upserts (fast)
-- Structured logging
-- Run metrics
-"""
-
+import sys
 import os
+
+# Add project root to path so utils/ can be found
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import requests
 import json
 import time
-import logging
-import requests
 from datetime import datetime, timezone
-from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# ============================================================
-# Setup
-# ============================================================
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-GAMMA_API = "https://gamma-api.polymarket.com"
+from utils.supabase_client import get_service_client
+supabase = get_service_client()
 
 
-# ============================================================
-# Helpers
-# ============================================================
-def safe_json_load(value):
+# ── Config ────────────────────────────────────────────────────
+TAG_CONFIG = {
+    "Macro/Fed":      [129, 100478, 100488, 100196, 103360, 132, 702, 370, 102000, 101248, 101250, 102973],
+    "Tariffs/Trade":  [101758, 311, 102012, 101759, 101760, 776],
+    "Tech/AI":        [439, 835, 537, 22, 102038, 238, 483, 101999],
+    "Crypto":         [21, 235, 833, 101798, 744, 1312],
+    "Stocks":         [602, 604, 737, 100266, 102679, 102678, 102681, 102680, 103211, 103450, 103244],
+    "Semiconductors": [100616, 102472, 103452]
+}
+
+GAMMA_API_URL = "https://gamma-api.polymarket.com/events"
+MIN_VOLUME    = 1000
+
+
+# ── Fetch from Polymarket ─────────────────────────────────────
+
+def fetch_events_by_tag(tag_id: int) -> list[dict]:
+    """Fetch active events for a single tag id."""
     try:
-        return json.loads(value) if isinstance(value, str) else value
-    except Exception:
+        resp = requests.get(GAMMA_API_URL, params={
+            "tag_id":    tag_id,
+            "active":    "true",
+            "closed":    "false",
+            "order":     "volume",
+            "ascending": "false",
+            "limit":     100,
+        }, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"  [ERROR] tag_id={tag_id}: {e}")
         return []
 
 
-# ============================================================
-# Fetch with retry
-# ============================================================
-def fetch_active_markets(limit=500, offset=0, retries=3):
-    url = f"{GAMMA_API}/markets"
-    params = {
-        "active": "true",
-        "closed": "false",
-        "order": "volume_24hr",
-        "ascending": "false",
-        "limit": limit,
-        "offset": offset,
+# ── Parse helpers ─────────────────────────────────────────────
+
+def parse_event_row(event: dict, category: str, tag_id: int) -> dict:
+    """Map a Polymarket event dict to our events table columns."""
+    return {
+        "id":       str(event["id"]),
+        "title":    event.get("title", "Unknown"),
+        "category": category,
+        "tag_ids":  [tag_id],           # stored as array — grows on re-scrape
+        "active":   event.get("active", True),
+        "closed":   event.get("closed", False),
+        "end_date": event.get("endDate") or None,
     }
 
-    for attempt in range(retries):
-        try:
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.warning(f"Fetch failed (attempt {attempt+1}): {e}")
-            time.sleep(2 * (attempt + 1))
 
-    logger.error("Failed to fetch markets after retries")
-    return []
+def parse_market_row(market: dict, event_id: str) -> dict | None:
+    """Map a Polymarket market dict to our markets table columns."""
+    m_id   = market.get("id")
+    volume = float(market.get("volume") or 0)
 
+    if not m_id or volume < MIN_VOLUME:
+        return None
 
-# ============================================================
-# Parsing
-# ============================================================
-def parse_outcomes_with_prices(market: dict):
-    outcomes_raw = market.get("outcomes", "[]")
-    prices_raw   = market.get("outcomePrices", "[]")
-
-    outcomes_list = safe_json_load(outcomes_raw) or []
-    prices_list   = safe_json_load(prices_raw) or []
-
-    # Convert to float safely
-    parsed_prices = []
-    for p in prices_list:
-        try:
-            parsed_prices.append(float(p))
-        except Exception:
-            parsed_prices.append(0.0)
-
-    return [
-        {"name": o, "price": p}
-        for o, p in zip(outcomes_list, parsed_prices)
-    ]
-
-def parse_market(raw_market: dict) -> dict:
-    """
-    Convert a raw Polymarket market into our DB schema format.
-    Captures previous outcome price for probability change tracking.
-    """
-    market_id = raw_market["id"]
-    new_outcomes = parse_outcomes_with_prices(raw_market)
-
-    # Fetch previous outcome price for momentum scoring
-    prev_price = None
+    # outcomePrices comes as a JSON string: '["0.72","0.28"]'
+    raw_prices = market.get("outcomePrices", "[]")
     try:
-        existing = supabase.table("markets").select("outcomes").eq("id", market_id).execute()
-        if existing.data:
-            old_outcomes = existing.data[0].get("outcomes", "[]")
-            if isinstance(old_outcomes, str):
-                old_outcomes = json.loads(old_outcomes)
-            if old_outcomes and len(old_outcomes) > 0:
-                prev_price = float(old_outcomes[0].get("price", 0))
+        prices = json.loads(raw_prices) if isinstance(raw_prices, str) else raw_prices
     except Exception:
-        prev_price = None
+        prices = []
+
+    yes_price = float(prices[0]) if len(prices) > 0 else 0.0
+    no_price  = float(prices[1]) if len(prices) > 1 else 0.0
 
     return {
-        "id": market_id,
-        "slug": raw_market.get("slug"),
-        "question": raw_market["question"],
-        "category": raw_market.get("category"),
-        "tags": json.dumps(raw_market.get("tags", [])),
-        "outcomes": json.dumps(new_outcomes),
-        "volume_24hr": float(raw_market.get("volume24Hr", 0) or 0),
-        "volume_total": float(raw_market.get("volume", 0) or 0),
-        "liquidity": float(raw_market.get("liquidity", 0) or 0),
-        "end_date": raw_market.get("endDate") or None,
-        "start_date": raw_market.get("startDate") or None,
-        "active": raw_market.get("active", True),
-        "closed": raw_market.get("closed", False),
-        "prev_outcome_price": prev_price,
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "id":        str(m_id),
+        "event_id":  event_id,
+        "question":  market.get("question", ""),
+        "yes_price": round(yes_price, 4),
+        "no_price":  round(no_price,  4),
+        "volume":    volume,
+        "liquidity": float(market.get("liquidity") or 0),
+        "end_date":  market.get("endDate") or None,
+        "active":    market.get("active", True),
+        "closed":    market.get("closed", False),
     }
 
-# ============================================================
-# Batch upsert
-# ============================================================
-def upsert_markets_batch(records: list[dict]):
-    if not records:
-        return
 
+# ── Supabase upserts ──────────────────────────────────────────
+
+def upsert_event(event_row: dict):
+    """
+    Upsert event into DB.
+    If it already exists, update title/category/active/closed.
+    tag_ids array is merged so we don't lose previously seen tag IDs.
+    """
     try:
-        supabase.table("markets").upsert(
-            records,
+        supabase.table("events").upsert(
+            event_row,
             on_conflict="id"
         ).execute()
     except Exception as e:
-        logger.error(f"Batch upsert failed: {e}")
+        print(f"  [ERROR] upsert event {event_row['id']}: {e}")
 
 
-# ============================================================
-# Main ingestion
-# ============================================================
-def ingest_all_markets(max_markets=10000):
-    offset = 0
-    total_ingested = 0
-    total_failed = 0
-
-    start_time = time.time()
-    logger.info("Starting ingestion pipeline...")
-
-    while True:
-        markets_page = fetch_active_markets(limit=500, offset=offset)
-
-        if not markets_page:
-            break
-
-        records = []
-
-        for raw in markets_page:
-            try:
-                record = parse_market(raw)
-                if record["id"]:  # ensure valid
-                    records.append(record)
-                else:
-                    total_failed += 1
-            except Exception as e:
-                logger.warning(f"Parse failed for {raw.get('id')}: {e}")
-                total_failed += 1
-
-        # Batch insert
-        upsert_markets_batch(records)
-
-        total_ingested += len(records)
-        offset += len(markets_page)
-
-        logger.info(f"Ingested: {total_ingested} | Failed: {total_failed}")
-
-        # Respect rate limits
-        time.sleep(0.5)
-
-        # Safety cap
-        if total_ingested >= max_markets:
-            break
-
-    elapsed = time.time() - start_time
-    logger.info(f"Ingestion complete: {total_ingested} markets")
-    logger.info(f"Failures: {total_failed}")
-    logger.info(f"Time taken: {elapsed:.2f}s")
-
-    return total_ingested
+def upsert_market(market_row: dict):
+    """
+    Upsert market into DB.
+    If it already exists, update price/volume/status.
+    """
+    try:
+        supabase.table("markets").upsert(
+            market_row,
+            on_conflict="id"
+        ).execute()
+    except Exception as e:
+        print(f"  [ERROR] upsert market {market_row['id']}: {e}")
 
 
-# ============================================================
-# Entry
-# ============================================================
+# ── Main scraper ──────────────────────────────────────────────
+
+def run_scraper():
+    started_at = datetime.now(timezone.utc)
+    print(f"\n{'='*55}")
+    print(f"  SCRAPE START — {started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f"{'='*55}")
+
+    seen_event_ids  : set[str] = set()
+    seen_market_ids : set[str] = set()
+
+    events_saved  = 0
+    markets_saved = 0
+
+    for category, tag_ids in TAG_CONFIG.items():
+        print(f"\n[{category}]")
+
+        for tag_id in tag_ids:
+            events = fetch_events_by_tag(tag_id)
+
+            for event in events:
+                event_id = str(event.get("id", ""))
+                if not event_id:
+                    continue
+
+                # ── Save event ──────────────────────────────
+                event_row = parse_event_row(event, category, tag_id)
+
+                if event_id not in seen_event_ids:
+                    upsert_event(event_row)
+                    seen_event_ids.add(event_id)
+                    events_saved += 1
+
+                # ── Save each market inside the event ───────
+                for market in event.get("markets", []):
+                    market_row = parse_market_row(market, event_id)
+
+                    if market_row is None:
+                        continue  # filtered by volume or missing id
+
+                    m_id = market_row["id"]
+                    if m_id not in seen_market_ids:
+                        upsert_market(market_row)
+                        seen_market_ids.add(m_id)
+                        markets_saved += 1
+
+            time.sleep(0.2)   # be polite to the API
+
+    # ── Summary ───────────────────────────────────────────────
+    elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+    print(f"\n{'='*55}")
+    print(f"  SCRAPE COMPLETE — {elapsed:.1f}s")
+    print(f"  Events  saved : {events_saved}")
+    print(f"  Markets saved : {markets_saved}")
+    print(f"{'='*55}\n")
+
+    return events_saved, markets_saved
+
+
+# ── Entry point ───────────────────────────────────────────────
+
 if __name__ == "__main__":
-    ingest_all_markets()
+    run_scraper()

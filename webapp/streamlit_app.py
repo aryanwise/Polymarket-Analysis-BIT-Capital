@@ -1,503 +1,803 @@
 """
 webapp/streamlit_app.py
 
-Polymarket Signal Scanner — Analyst Web Interface.
-Displays signals, reports, and raw markets from the database.
+BIT Capital — Polymarket Signal Scanner
+Dark Bloomberg-style dashboard
 """
+import sys
 import os
-import json
+
+# Add project root to path so utils/ can be found
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import yfinance as yf
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ============================================================
-# Configuration
-# ============================================================
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-
+# ── Page config ───────────────────────────────────────────────
 st.set_page_config(
-    page_title="Polymarket Signal Scanner",
-    page_icon="🔍",
+    page_title="BIT Capital — Signal Scanner",
+    page_icon="📡",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ============================================================
-# Styling
-# ============================================================
+# ── Supabase ──────────────────────────────────────────────────
+from utils.supabase_client import get_anon_client
+supabase = get_anon_client()
+
+# ── Styling ───────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .signal-card {
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 16px;
-        margin: 8px 0;
-        background: #fafafa;
-    }
-    .bullish { border-left: 4px solid #4CAF50; }
-    .bearish { border-left: 4px solid #F44336; }
-    .neutral { border-left: 4px solid #9E9E9E; }
-    .mixed   { border-left: 4px solid #FF9800; }
-    .metric-box {
-        text-align: center;
-        padding: 12px;
-        border-radius: 8px;
-        background: #f0f2f6;
-    }
+/* ── Base ── */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background-color: #0a0a0f;
+    color: #e2e8f0;
+}
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background-color: #0f0f1a;
+    border-right: 1px solid #1e2035;
+}
+[data-testid="stSidebar"] * { color: #94a3b8; }
+
+/* ── Metric cards ── */
+[data-testid="metric-container"] {
+    background: #111827;
+    border: 1px solid #1e2035;
+    border-radius: 6px;
+    padding: 16px;
+}
+[data-testid="metric-container"] label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px !important;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #475569 !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 26px !important;
+    color: #f0f6ff !important;
+}
+
+/* ── Tables ── */
+[data-testid="stDataFrame"] {
+    border: 1px solid #1e2035;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* ── Signal cards ── */
+.signal-card {
+    background: #111827;
+    border: 1px solid #1e2035;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 10px;
+    transition: border-color 0.15s;
+}
+.signal-card:hover { border-color: #334155; }
+.signal-card.bullish { border-left: 3px solid #22c55e; }
+.signal-card.bearish { border-left: 3px solid #ef4444; }
+.signal-card.neutral { border-left: 3px solid #64748b; }
+
+.signal-question {
+    font-size: 14px;
+    font-weight: 500;
+    color: #e2e8f0;
+    margin-bottom: 6px;
+}
+.signal-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: #475569;
+}
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.badge-bullish { background: #052e16; color: #22c55e; }
+.badge-bearish { background: #2d0a0a; color: #ef4444; }
+.badge-neutral { background: #0f172a; color: #64748b; }
+
+/* ── Report ── */
+.report-body {
+    background: #111827;
+    border: 1px solid #1e2035;
+    border-radius: 8px;
+    padding: 28px 32px;
+    font-size: 14px;
+    line-height: 1.8;
+}
+.report-body h1 { font-size: 20px; color: #f0f6ff; margin-bottom: 16px; }
+.report-body h2 { font-size: 16px; color: #60a5fa; border-bottom: 1px solid #1e2035; padding-bottom: 6px; margin: 24px 0 12px; }
+.report-body h3 { font-size: 14px; color: #f59e0b; margin: 16px 0 8px; }
+
+/* ── Price card ── */
+.price-card {
+    background: #111827;
+    border: 1px solid #1e2035;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+}
+.price-ticker {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 18px;
+    font-weight: 600;
+    color: #60a5fa;
+}
+.price-company { font-size: 11px; color: #475569; margin: 2px 0 10px; }
+.price-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 600;
+    color: #f0f6ff;
+}
+.price-change-up   { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #22c55e; }
+.price-change-down { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #ef4444; }
+
+/* ── Dig deeper output ── */
+.deep-dive-box {
+    background: #0d1117;
+    border: 1px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 1.7;
+}
+.source-link {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: #3b82f6;
+}
+
+/* ── Section headers ── */
+.section-header {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #475569;
+    padding: 4px 0 10px;
+    border-bottom: 1px solid #1e2035;
+    margin-bottom: 18px;
+}
+
+/* ── Tab styling ── */
+[data-testid="stTabs"] button {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: #475569;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #60a5fa;
+    border-bottom-color: #60a5fa !important;
+}
+
+/* ── Divider ── */
+hr { border-color: #1e2035; }
+
+/* ── Expander ── */
+[data-testid="stExpander"] {
+    background: #111827;
+    border: 1px solid #1e2035;
+    border-radius: 6px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# Sidebar: Configuration
-# ============================================================
-with st.sidebar:
-    st.header("⚙️ Configuration")
 
-    # Load stocks from DB
-    try:
-        stocks = supabase.table("stocks").select("*").eq("active", True).execute()
-        stock_options = {s["ticker"]: s for s in stocks.data}
-    except Exception:
-        stock_options = {}
-        st.warning("Could not load stocks from database.")
+# ── Helpers ───────────────────────────────────────────────────
 
-    selected_tickers = st.multiselect(
-        "Filter by ticker:",
-        options=list(stock_options.keys()),
-        default=list(stock_options.keys())[:5] if stock_options else [],
-    )
-
-    direction_filter = st.selectbox(
-        "Signal direction:",
-        options=["all", "bullish", "bearish", "neutral", "mixed"],
-    )
-
-    min_score = st.slider(
-        "Minimum relevance score:",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.3,
-        step=0.05,
-    )
-
-    hours_back = st.slider(
-        "Hours to look back:",
-        min_value=1,
-        max_value=168,  # 1 week
-        value=24,
-        step=1,
-    )
-
-    st.divider()
-
-    # Quick Stats
-    st.markdown("### 📊 Database Stats")
-    try:
-        total_markets = (
-            supabase.table("markets")
-            .select("id", count="exact")
-            .eq("active", True)
-            .execute()
-            .count
-        )
-        total_signals = (
-            supabase.table("signals")
-            .select("id", count="exact")
-            .execute()
-            .count
-        )
-        total_reports = (
-            supabase.table("reports")
-            .select("id", count="exact")
-            .execute()
-            .count
-        )
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Active Markets", f"{total_markets:,}")
-        with col2:
-            st.metric("Classified Signals", f"{total_signals:,}")
-        with col3:
-            st.metric("Reports Generated", f"{total_reports:,}")
-    except Exception:
-        st.warning("Could not load stats.")
-
-    st.divider()
-    st.caption("BIT Capital — Prediction Market Intelligence")
-
-
-# ============================================================
-# Tabs
-# ============================================================
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📡 Live Signals",
-    "📑 Signal Reports",
-    "📈 Signal Analytics",
-    "🗄️ Raw Markets",
-])
-
-# ============================================================
-# Helper Functions
-# ============================================================
-DIRECTION_EMOJI = {
-    "bullish": "🟢",
-    "bearish": "🔴",
-    "neutral": "⚪",
-    "mixed": "🟡",
+SENTIMENT_BADGE = {
+    "Bullish": '<span class="badge badge-bullish">▲ Bullish</span>',
+    "Bearish": '<span class="badge badge-bearish">▼ Bearish</span>',
+    "Neutral": '<span class="badge badge-neutral">— Neutral</span>',
 }
 
-def format_volume(vol) -> str:
-    """Format volume as human-readable string."""
-    if vol is None:
-        return "$0"
-    vol = float(vol)
-    if vol >= 1_000_000:
-        return f"${vol/1_000_000:.1f}M"
-    elif vol >= 1_000:
-        return f"${vol/1_000:.0f}K"
-    return f"${vol:,.0f}"
+HOLDINGS_META = {
+    "IREN":  "IREN Limited",
+    "MSFT":  "Microsoft",
+    "GOOGL": "Alphabet",
+    "LMND":  "Lemonade",
+    "RDDT":  "Reddit",
+    "MU":    "Micron",
+    "TSM":   "TSMC",
+    "HUT":   "Hut 8",
+    "HOOD":  "Robinhood",
+    "DDOG":  "Datadog",
+}
+
+def fmt_vol(v):
+    v = float(v or 0)
+    if v >= 1_000_000: return f"${v/1_000_000:.1f}M"
+    if v >= 1_000:     return f"${v/1_000:.0f}K"
+    return f"${v:,.0f}"
+
+def fmt_prob(p):
+    return f"{float(p or 0):.0%}"
+
+def sentiment_class(s):
+    return (s or "neutral").lower()
 
 
-def parse_outcomes(outcomes_raw):
-    """Safely parse outcomes JSON."""
-    if isinstance(outcomes_raw, str):
-        try:
-            return json.loads(outcomes_raw)
-        except Exception:
-            return []
-    return outcomes_raw or []
+# ── Data fetchers (cached) ────────────────────────────────────
+
+@st.cache_data(ttl=120)   # refresh every 2 min
+def load_signals(limit=100):
+    res = (
+        supabase.table("signal_feed")
+        .select("*")
+        .order("impact_score", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return res.data or []
 
 
-# ============================================================
-# Tab 1: Live Signals
-# ============================================================
-with tab1:
-    st.header("Current Equity-Relevant Signals")
+@st.cache_data(ttl=300)
+def load_reports(limit=20):
+    res = (
+        supabase.table("reports")
+        .select("id, generated_at, tickers, signal_count, content")
+        .order("generated_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return res.data or []
 
-    # Build query
-    try:
-        query = (
-            supabase.table("signals")
-            .select(
-                "*, "
-                "markets!inner(question, outcomes, volume_total, end_date, category)"
-            )
-            .order("relevance_score", desc=True)
-        )
 
-        if selected_tickers:
-            query = query.in_("stock_ticker", selected_tickers)
-        if direction_filter != "all":
-            query = query.eq("signal_direction", direction_filter)
-        if min_score > 0:
-            query = query.gte("relevance_score", min_score)
+@st.cache_data(ttl=120)
+def load_event_markets(event_id: str) -> list[dict]:
+    """Fetch all markets for a given event_id."""
+    res = (
+        supabase.table("markets")
+        .select("id, question, yes_price, no_price, volume, end_date")
+        .eq("event_id", event_id)
+        .eq("active", True)
+        .eq("closed", False)
+        .order("volume", desc=True)
+        .execute()
+    )
+    return res.data or []
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).isoformat()
-        query = query.gte("created_at", cutoff)
 
-        signals = query.limit(200).execute()
+@st.cache_data(ttl=60)
+def load_stats():
+    markets = supabase.table("markets").select("id", count="exact").execute()
+    signals = supabase.table("signals").select("id", count="exact").eq("is_relevant", True).execute()
+    reports = supabase.table("reports").select("id", count="exact").execute()
+    events  = supabase.table("events").select("id",  count="exact").execute()
+    return {
+        "markets":  markets.count or 0,
+        "signals":  signals.count or 0,
+        "reports":  reports.count or 0,
+        "events":   events.count  or 0,
+    }
 
-    except Exception as e:
-        st.error(f"Error loading signals: {e}")
-        signals = type("obj", (object,), {"data": []})()
 
-    if not signals.data:
-        st.info("No signals match your filters. Try broadening the criteria or running the filter pipeline first.")
-    else:
-        st.caption(f"Showing {len(signals.data)} signals")
-
-        for s in signals.data:
-            market = s.get("markets", {})
-            outcomes = parse_outcomes(market.get("outcomes", "[]"))
-            top_outcome = outcomes[0] if outcomes else {}
-            direction = s.get("signal_direction", "neutral")
-
-            # Build card
-            with st.container():
-                card_class = f"signal-card {direction}"
-                st.markdown(f'<div class="{card_class}">', unsafe_allow_html=True)
-
-                cols = st.columns([1, 7, 2, 2])
-
-                with cols[0]:
-                    emoji = DIRECTION_EMOJI.get(direction, "❓")
-                    st.markdown(f"## {emoji}")
-                    st.caption(direction.upper())
-
-                with cols[1]:
-                    st.markdown(f"**{s['stock_ticker']}** — Score: {s['relevance_score']:.2f}")
-                    st.markdown(f"*{market.get('question', 'N/A')}*")
-                    st.caption(s.get('reasoning', 'No reasoning provided'))
-
-                with cols[2]:
-                    top_price = top_outcome.get("price", 0)
-                    st.metric(
-                        label=top_outcome.get("name", "Price"),
-                        value=f"{float(top_price):.0%}",
-                    )
-                    st.caption(f"Vol: {format_volume(market.get('volume_total', 0))}")
-
-                with cols[3]:
-                    # Metadata chips
-                    llm_score = s.get("llm_score", "N/A")
-                    kw_score = s.get("keyword_score", "N/A")
-                    if isinstance(llm_score, (int, float)):
-                        st.metric("LLM", f"{llm_score:.2f}")
-                    if isinstance(kw_score, (int, float)):
-                        st.metric("KW", str(int(kw_score)))
-
-                # Expandable details
-                with st.expander("Details"):
-                    detail_cols = st.columns(3)
-
-                    with detail_cols[0]:
-                        st.markdown("**Matched Keywords**")
-                        keywords = s.get("matched_keywords", [])
-                        if keywords:
-                            st.markdown(", ".join(f"`{k}`" for k in keywords))
-                        else:
-                            st.caption("None")
-
-                    with detail_cols[1]:
-                        st.markdown("**Themes**")
-                        themes = s.get("themes", [])
-                        if themes:
-                            st.markdown(", ".join(f"`{t}`" for t in themes))
-                        else:
-                            st.caption("None")
-
-                    with detail_cols[2]:
-                        st.markdown("**Market Info**")
-                        st.caption(f"Category: {market.get('category', 'N/A')}")
-                        expiry = market.get("end_date", "N/A")
-                        if expiry and expiry != "N/A":
-                            try:
-                                exp_date = datetime.fromisoformat(str(expiry).replace("Z", "+00:00"))
-                                days_left = max((exp_date - datetime.now(timezone.utc)).days, 0)
-                                st.caption(f"Expires: {expiry}")
-                                st.caption(f"Days left: {days_left}")
-                            except Exception:
-                                st.caption(f"Expires: {expiry}")
-                        else:
-                            st.caption("Expires: N/A")
-
-                st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================
-# Tab 2: Signal Reports
-# ============================================================
-with tab2:
-    st.header("Generated Analyst Reports")
-
-    try:
-        reports = (
-            supabase.table("reports")
-            .select("*")
-            .order("generated_at", desc=True)
-            .limit(20)
+@st.cache_data(ttl=300)
+def load_stock_prices_db():
+    """Fallback prices from DB."""
+    rows = []
+    for ticker in HOLDINGS_META:
+        res = (
+            supabase.table("stock_prices")
+            .select("ticker, price, change_pct, fetched_at")
+            .eq("ticker", ticker)
+            .order("fetched_at", desc=True)
+            .limit(1)
             .execute()
         )
-    except Exception as e:
-        st.error(f"Error loading reports: {e}")
-        reports = type("obj", (object,), {"data": []})()
+        if res.data:
+            rows.append(res.data[0])
+    return rows
 
-    if not reports.data:
-        st.info("No reports generated yet. Run the report generator pipeline.")
-        st.code("python pipeline/report_generator.py", language="bash")
-    else:
-        for report in reports.data:
-            tickers = report.get("tickers", [])
-            content = report.get("content", "")
-            gen_at = report.get("generated_at", "")[:10]
 
-            with st.expander(f"📄 {report['title']} — {gen_at}", expanded=(reports.data.index(report) == 0)):
-                if tickers:
-                    ticker_tags = " ".join([f"`{t}`" for t in tickers])
-                    st.markdown(f"**Covered tickers:** {ticker_tags}")
-                st.divider()
-                st.markdown(content)
-
-                # Download button
-                st.download_button(
-                    label="Download Report (Markdown)",
-                    data=content,
-                    file_name=f"polymarket_report_{gen_at}.md",
-                    mime="text/markdown",
-                )
-
-# ============================================================
-# Tab 3: Signal Analytics
-# ============================================================
-with tab3:
-    st.header("Signal Analytics")
-
+def fetch_live_prices():
+    """Fetch live prices from Yahoo Finance."""
+    prices = {}
+    tickers = list(HOLDINGS_META.keys())
     try:
-        # Fetch signals for analytics
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).isoformat()
-        analytics_signals = (
-            supabase.table("signals")
-            .select("stock_ticker, signal_direction, relevance_score, themes, created_at")
-            .gte("created_at", cutoff)
-            .execute()
+        data = yf.download(
+            tickers,
+            period="2d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=True,
+            progress=False,
         )
-        data = analytics_signals.data or []
+        for ticker in tickers:
+            try:
+                df = data[ticker] if len(tickers) > 1 else data
+                if df.empty:
+                    continue
+                latest    = float(df["Close"].iloc[-1])
+                prev      = float(df["Close"].iloc[-2]) if len(df) >= 2 else latest
+                chg       = ((latest - prev) / prev) * 100 if prev else 0
+                prices[ticker] = {"price": latest, "change_pct": chg, "live": True}
+            except Exception:
+                continue
     except Exception:
-        data = []
+        pass
+    return prices
 
-    if not data:
-        st.info("No signals for analytics in the selected time window.")
+
+def get_existing_deep_dive(signal_id):
+    res = (
+        supabase.table("deep_dives")
+        .select("*")
+        .eq("signal_id", signal_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        return None
+    row = res.data[0]
+    # Check if < 6 hours old
+    import dateutil.parser
+    age = (datetime.now(timezone.utc) - dateutil.parser.parse(row["created_at"])).total_seconds() / 3600
+    return row if age < 6 else None
+
+
+# ── Sidebar ───────────────────────────────────────────────────
+
+with st.sidebar:
+    st.markdown("""
+    <div style='padding: 8px 0 24px'>
+        <div style='font-family: IBM Plex Mono, monospace; font-size: 11px;
+                    letter-spacing: 0.14em; color: #3b82f6; text-transform: uppercase;
+                    margin-bottom: 4px;'>BIT Capital</div>
+        <div style='font-size: 18px; font-weight: 600; color: #f0f6ff;'>Signal Scanner</div>
+        <div style='font-size: 11px; color: #334155; margin-top: 2px;'>Polymarket Intelligence</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # DB stats
+    stats = load_stats()
+    st.metric("Active Markets",  f"{stats['markets']:,}")
+    st.metric("Relevant Signals", f"{stats['signals']:,}")
+    st.metric("Reports Generated", f"{stats['reports']:,}")
+
+    st.markdown("---")
+    st.markdown(
+        f"<div style='font-family: IBM Plex Mono, monospace; font-size: 10px; "
+        f"color: #334155;'>Last refresh<br>{datetime.now().strftime('%H:%M:%S UTC')}</div>",
+        unsafe_allow_html=True
+    )
+    if st.button("↺  Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+
+# ── Main tabs ─────────────────────────────────────────────────
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📡  Dashboard",
+    "🎯  Signal Feed",
+    "📊  Stock Prices",
+    "📋  Reports",
+    "🔍  Dig Deeper",
+])
+
+
+# ════════════════════════════════════════════════════════════
+# TAB 1 — DASHBOARD
+# ════════════════════════════════════════════════════════════
+
+with tab1:
+    st.markdown('<div class="section-header">Market Overview</div>', unsafe_allow_html=True)
+
+    # Top stat row
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Markets Tracked",   f"{stats['markets']:,}")
+    col2.metric("Active Signals",    f"{stats['signals']:,}")
+    col3.metric("Events Monitored",  f"{stats['events']:,}")
+    col4.metric("Reports Generated", f"{stats['reports']:,}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Top Signals Today</div>', unsafe_allow_html=True)
+
+    signals = load_signals(limit=50)
+
+    if not signals:
+        st.info("No signals yet — run the scraper and filter pipeline first.")
     else:
-        df = pd.DataFrame(data)
+        # Sentiment summary bar
+        bull = sum(1 for s in signals if s.get("sentiment") == "Bullish")
+        bear = sum(1 for s in signals if s.get("sentiment") == "Bearish")
+        neut = sum(1 for s in signals if s.get("sentiment") == "Neutral")
+        total = max(len(signals), 1)
 
-        # --- Row 1: Direction Distribution & Score Distribution ---
-        col1, col2 = st.columns(2)
+        c1, c2, c3, _ = st.columns([1, 1, 1, 3])
+        c1.metric("🟢 Bullish", bull, f"{bull/total:.0%}")
+        c2.metric("🔴 Bearish", bear, f"{bear/total:.0%}")
+        c3.metric("⚪ Neutral", neut, f"{neut/total:.0%}")
 
-        with col1:
-            st.subheader("Direction Distribution")
-            direction_counts = df["signal_direction"].value_counts()
-            st.bar_chart(direction_counts)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        with col2:
-            st.subheader("Score Distribution by Direction")
-            if not df.empty:
-                import plotly.express as px
-                fig = px.box(
-                    df,
-                    x="signal_direction",
-                    y="relevance_score",
-                    color="signal_direction",
-                    title="Relevance Score by Direction",
-                )
-                st.plotly_chart(fig, use_container_width=True)
+        # Top 8 signal cards
+        for s in signals[:8]:
+            sentiment = s.get("sentiment", "Neutral")
+            css_class = sentiment_class(sentiment)
+            badge     = SENTIMENT_BADGE.get(sentiment, "")
 
-        # --- Row 2: Ticker Breakdown & Timeline ---
-        col3, col4 = st.columns(2)
+            st.markdown(f"""
+            <div class="signal-card {css_class}">
+                <div class="signal-question">{s.get('question','')}</div>
+                <div class="signal-meta">
+                    {badge} &nbsp;
+                    <b style="color:#e2e8f0">{s.get('ticker','?')}</b>
+                    &nbsp;·&nbsp; {s.get('company_name','')}
+                    &nbsp;·&nbsp; Score: <b style="color:#f0f6ff">{s.get('impact_score','?')}/10</b>
+                    &nbsp;·&nbsp; YES: <b style="color:#60a5fa">{fmt_prob(s.get('yes_price',0))}</b>
+                    &nbsp;·&nbsp; Vol: {fmt_vol(s.get('volume',0))}
+                    &nbsp;·&nbsp; {s.get('category','')}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        with col3:
-            st.subheader("Signals per Ticker")
-            ticker_counts = df["stock_ticker"].value_counts().head(10)
-            st.bar_chart(ticker_counts)
 
-        with col4:
-            st.subheader("Average Score by Ticker (Top 10)")
-            ticker_avg = df.groupby("stock_ticker")["relevance_score"].mean().sort_values(ascending=False).head(10)
-            st.bar_chart(ticker_avg)
+# ════════════════════════════════════════════════════════════
+# TAB 2 — SIGNAL FEED
+# ════════════════════════════════════════════════════════════
 
-        # --- Row 3: Theme Analysis ---
-        st.subheader("Theme Analysis")
-        all_themes_list = []
-        for themes in df["themes"]:
-            if themes and isinstance(themes, list):
-                all_themes_list.extend(themes)
+with tab2:
+    st.markdown('<div class="section-header">All Signals</div>', unsafe_allow_html=True)
 
-        if all_themes_list:
-            theme_df = pd.DataFrame(all_themes_list, columns=["theme"])
-            theme_counts = theme_df["theme"].value_counts().head(10)
-            st.bar_chart(theme_counts)
-        else:
-            st.caption("No theme data available")
+    signals = load_signals(limit=200)
 
-        # --- Row 4: Recent Signals Table ---
-        st.subheader("Recent Signals Table")
-        display_df = df.rename(columns={
-            "stock_ticker": "Ticker",
-            "signal_direction": "Direction",
-            "relevance_score": "Score",
-            "created_at": "Time",
+    if not signals:
+        st.info("No signals found. Run the filter pipeline first.")
+    else:
+        # Filters row
+        fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
+
+        all_tickers    = sorted({s.get("ticker","") for s in signals if s.get("ticker")})
+        all_categories = sorted({s.get("category","") for s in signals if s.get("category")})
+
+        sel_ticker    = fc1.selectbox("Ticker",    ["All"] + all_tickers)
+        sel_sentiment = fc2.selectbox("Sentiment", ["All", "Bullish", "Bearish", "Neutral"])
+        sel_category  = fc3.selectbox("Category",  ["All"] + all_categories)
+        min_score     = fc4.slider("Min Score", 1, 10, 1)
+
+        # Apply filters
+        filtered = signals
+        if sel_ticker    != "All": filtered = [s for s in filtered if s.get("ticker")    == sel_ticker]
+        if sel_sentiment != "All": filtered = [s for s in filtered if s.get("sentiment") == sel_sentiment]
+        if sel_category  != "All": filtered = [s for s in filtered if s.get("category")  == sel_category]
+        filtered = [s for s in filtered if (s.get("impact_score") or 0) >= min_score]
+
+        st.caption(f"Showing {len(filtered)} signals")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Render signal cards
+        for s in filtered:
+            sentiment = s.get("sentiment", "Neutral")
+            css_class = sentiment_class(sentiment)
+            badge     = SENTIMENT_BADGE.get(sentiment, "")
+            expiry    = s.get("end_date", "")[:10] if s.get("end_date") else "—"
+
+            st.markdown(f"""
+            <div class="signal-card {css_class}">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div style="flex:1">
+                        <div class="signal-question">{s.get('question','')}</div>
+                        <div style="font-size:12px; color:#64748b; margin: 4px 0 6px;">
+                            {s.get('event_title','')}
+                        </div>
+                        <div class="signal-meta">
+                            {badge} &nbsp;
+                            <b style="color:#e2e8f0">{s.get('ticker','?')}</b>
+                            &nbsp;·&nbsp; {s.get('company_name','')}
+                            &nbsp;·&nbsp; Score: <b style="color:#f0f6ff">{s.get('impact_score','?')}/10</b>
+                            &nbsp;·&nbsp; YES: <b style="color:#60a5fa">{fmt_prob(s.get('yes_price',0))}</b>
+                            &nbsp;·&nbsp; Vol: {fmt_vol(s.get('volume',0))}
+                            &nbsp;·&nbsp; Expiry: {expiry}
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:8px; font-size:12px; color:#64748b; font-style:italic;">
+                    {s.get('reasoning','')}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # ── Event markets expander ──────────────────────────
+            event_id = s.get("event_id") or (
+                supabase.table("markets")
+                .select("event_id")
+                .eq("id", s.get("market_id",""))
+                .single()
+                .execute()
+                .data or {}
+            ).get("event_id")
+
+            if event_id:
+                with st.expander(f"📂  View all markets under this event"):
+                    event_markets = load_event_markets(event_id)
+                    if not event_markets:
+                        st.caption("No markets found for this event.")
+                    else:
+                        rows = []
+                        for m in event_markets:
+                            is_current = m.get("question","") == s.get("question","")
+                            rows.append({
+                                "Question":  ("★ " if is_current else "") + m.get("question",""),
+                                "YES":       f"{float(m.get('yes_price',0)):.0%}",
+                                "NO":        f"{float(m.get('no_price', 0)):.0%}",
+                                "Volume":    fmt_vol(m.get("volume", 0)),
+                                "Expiry":    m.get("end_date","")[:10] if m.get("end_date") else "—",
+                            })
+                        st.dataframe(
+                            pd.DataFrame(rows),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+
+# ════════════════════════════════════════════════════════════
+# TAB 3 — STOCK PRICES
+# ════════════════════════════════════════════════════════════
+
+with tab3:
+    st.markdown('<div class="section-header">BIT Capital Holdings — Live Prices</div>', unsafe_allow_html=True)
+
+    with st.spinner("Fetching live prices from Yahoo Finance..."):
+        live = fetch_live_prices()
+
+    # Fallback to DB if live fetch failed
+    if not live:
+        st.warning("Live prices unavailable — showing last stored prices from DB.")
+        db_prices = load_stock_prices_db()
+        live = {r["ticker"]: {"price": r["price"], "change_pct": r["change_pct"], "live": False}
+                for r in db_prices}
+
+    # Render 2 rows of 5 cards
+    tickers = list(HOLDINGS_META.keys())
+    for row_start in [0, 5]:
+        cols = st.columns(5)
+        for i, ticker in enumerate(tickers[row_start:row_start+5]):
+            p = live.get(ticker, {})
+            price  = p.get("price",      0)
+            chg    = p.get("change_pct", 0)
+            is_up  = chg >= 0
+            chg_str = f"{'▲' if is_up else '▼'} {abs(chg):.2f}%"
+            chg_cls = "price-change-up" if is_up else "price-change-down"
+            live_dot = "🟢" if p.get("live") else "🟡"
+
+            cols[i].markdown(f"""
+            <div class="price-card">
+                <div class="price-ticker">{ticker}</div>
+                <div class="price-company">{HOLDINGS_META[ticker]}</div>
+                <div class="price-value">${price:,.2f}</div>
+                <div class="{chg_cls}">{chg_str}</div>
+                <div style="font-size:10px; color:#334155; margin-top:6px;">{live_dot} {'Live' if p.get('live') else 'Cached'}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Price table
+    st.markdown('<div class="section-header">Price Table</div>', unsafe_allow_html=True)
+    rows = []
+    for ticker, meta in HOLDINGS_META.items():
+        p = live.get(ticker, {})
+        rows.append({
+            "Ticker":  ticker,
+            "Company": meta,
+            "Price":   f"${p.get('price',0):,.2f}",
+            "1D Change": f"{'▲' if p.get('change_pct',0)>=0 else '▼'} {abs(p.get('change_pct',0)):.2f}%",
+            "Source":  "Live" if p.get("live") else "Cached",
         })
-        display_df["Score"] = display_df["Score"].apply(lambda x: f"{x:.2f}" if isinstance(x, (int, float)) else x)
-        st.dataframe(
-            display_df[["Ticker", "Direction", "Score", "Time"]].head(50),
-            use_container_width=True,
-            hide_index=True,
-        )
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-# ============================================================
-# Tab 4: Raw Markets
-# ============================================================
+
+# ════════════════════════════════════════════════════════════
+# TAB 4 — REPORTS
+# ════════════════════════════════════════════════════════════
+
 with tab4:
-    st.header("Active Polymarket Markets")
+    st.markdown('<div class="section-header">Daily Alpha Reports</div>', unsafe_allow_html=True)
 
-    # Filters
-    col1, col2 = st.columns(2)
-    with col1:
-        raw_category = st.selectbox(
-            "Filter by category:",
-            options=["all", "politics", "economics", "technology", "crypto", "science", "business", "world"],
-        )
-    with col2:
-        raw_volume_min = st.number_input(
-            "Minimum volume ($):",
-            min_value=0,
-            value=50000,
-            step=10000,
-            format="%d",
-        )
+    reports = load_reports()
 
-    try:
-        query = (
-            supabase.table("markets")
-            .select("*")
-            .eq("active", True)
-            .eq("closed", False)
-            .gte("volume_total", raw_volume_min)
-            .order("volume_total", desc=True)
-            .limit(100)
-        )
-
-        if raw_category != "all":
-            query = query.eq("category", raw_category)
-
-        markets = query.execute()
-
-    except Exception as e:
-        st.error(f"Error loading markets: {e}")
-        markets = type("obj", (object,), {"data": []})()
-
-    if markets.data:
-        # Build display dataframe
-        rows = []
-        for m in markets.data:
-            outcomes = parse_outcomes(m.get("outcomes", "[]"))
-            top_outcome = outcomes[0] if outcomes else {}
-            rows.append({
-                "Question": m.get("question", "")[:100],
-                "Category": m.get("category", "N/A"),
-                "Top Outcome": top_outcome.get("name", "?"),
-                "Probability": f"{float(top_outcome.get('price', 0)):.0%}",
-                "Volume": m.get("volume_total", 0),
-                "Liquidity": m.get("liquidity", 0),
-                "Expiry": str(m.get("end_date", "N/A"))[:10] if m.get("end_date") else "N/A",
-                "LLM Processed": "✅" if m.get("llm_processed") else "❌",
-            })
-
-        st.dataframe(
-            rows,
-            column_config={
-                "Question": st.column_config.TextColumn("Question", width="large"),
-                "Volume": st.column_config.NumberColumn("Volume", format="$%.0f"),
-                "Liquidity": st.column_config.NumberColumn("Liquidity", format="$%.0f"),
-            },
-            use_container_width=True,
-            hide_index=True,
-        )
-        st.caption(f"Showing top {len(rows)} markets")
+    if not reports:
+        st.info("No reports yet — run report_generator.py first.")
     else:
-        st.info("No markets match your filters.")
+        # Report selector on the left, content on the right
+        r_col1, r_col2 = st.columns([1, 3])
+
+        with r_col1:
+            st.markdown("**Select Report**")
+            report_options = {
+                f"{r['generated_at'][:10]} — {len(r.get('tickers') or [])} tickers": r
+                for r in reports
+            }
+            selected_label = st.radio(
+                "Select a report",
+                options=list(report_options.keys()),
+                label_visibility="collapsed"
+            )
+
+            selected_report = report_options[selected_label]
+
+        with r_col2:
+            gen_at  = selected_report.get("generated_at","")[:16].replace("T"," ")
+            tickers = selected_report.get("tickers") or []
+            sig_cnt = selected_report.get("signal_count", 0)
+
+            # Report header
+            st.markdown(f"""
+            <div style="display:flex; justify-content:space-between; align-items:center;
+                        margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #1e2035;">
+                <div>
+                    <div style="font-size:16px; font-weight:600; color:#f0f6ff;">
+                        BIT Capital Alpha Report
+                    </div>
+                    <div style="font-family: IBM Plex Mono, monospace; font-size:11px; color:#475569;">
+                        {gen_at} UTC &nbsp;·&nbsp; {sig_cnt} signals
+                    </div>
+                </div>
+                <div style="font-size:12px; color:#475569;">
+                    {' '.join([f'<span style="background:#1e2035;padding:2px 6px;border-radius:4px;font-family:IBM Plex Mono,monospace;font-size:11px;color:#60a5fa;">{t}</span>' for t in tickers])}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Report content
+            with st.container():
+                st.markdown(
+                    f'<div class="report-body">{selected_report.get("content","")}</div>',
+                    unsafe_allow_html=True
+                )
+
+            # Download button
+            st.download_button(
+                label="⬇  Download as Markdown",
+                data=selected_report.get("content",""),
+                file_name=f"BIT_Capital_Report_{gen_at[:10]}.md",
+                mime="text/markdown",
+            )
 
 
-# ============================================================
-# Footer
-# ============================================================
-st.divider()
-st.caption(
-    f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')} | "
-    "Data sourced from Polymarket Gamma API | "
-    "BIT Capital — Tech-Focused Investment Fund"
-)
+# ════════════════════════════════════════════════════════════
+# TAB 5 — DIG DEEPER
+# ════════════════════════════════════════════════════════════
+
+with tab5:
+    st.markdown('<div class="section-header">Deep Dive Analysis</div>', unsafe_allow_html=True)
+    st.markdown(
+        "<p style='color:#64748b; font-size:13px;'>Click Analyze on any signal to run a "
+        "real-time news + Groq analysis. Results are cached for 6 hours.</p>",
+        unsafe_allow_html=True
+    )
+
+    signals = load_signals(limit=50)
+
+    if not signals:
+        st.info("No signals found. Run the filter pipeline first.")
+    else:
+        # Filters
+        dd_col1, dd_col2 = st.columns([2, 2])
+        dd_tickers    = sorted({s.get("ticker","") for s in signals if s.get("ticker")})
+        dd_sel_ticker = dd_col1.selectbox("Filter by ticker", ["All"] + dd_tickers, key="dd_ticker")
+        dd_sel_sent   = dd_col2.selectbox("Filter by sentiment", ["All","Bullish","Bearish","Neutral"], key="dd_sent")
+
+        dd_filtered = signals
+        if dd_sel_ticker != "All": dd_filtered = [s for s in dd_filtered if s.get("ticker") == dd_sel_ticker]
+        if dd_sel_sent   != "All": dd_filtered = [s for s in dd_filtered if s.get("sentiment") == dd_sel_sent]
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        for s in dd_filtered[:20]:
+            signal_id = s.get("signal_id")
+            sentiment = s.get("sentiment","Neutral")
+            css_class = sentiment_class(sentiment)
+            badge     = SENTIMENT_BADGE.get(sentiment,"")
+
+            # Signal row
+            st.markdown(f"""
+            <div class="signal-card {css_class}">
+                <div class="signal-question">{s.get('question','')}</div>
+                <div class="signal-meta">
+                    {badge} &nbsp;
+                    <b style="color:#e2e8f0">{s.get('ticker','?')}</b>
+                    &nbsp;·&nbsp; {s.get('company_name','')}
+                    &nbsp;·&nbsp; Score: <b style="color:#f0f6ff">{s.get('impact_score','?')}/10</b>
+                    &nbsp;·&nbsp; YES: <b style="color:#60a5fa">{fmt_prob(s.get('yes_price',0))}</b>
+                    &nbsp;·&nbsp; Vol: {fmt_vol(s.get('volume',0))}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Analyze button — unique key per signal
+            btn_key    = f"analyze_{signal_id}"
+            result_key = f"result_{signal_id}"
+
+            if st.button(f"🔍  Analyze {s.get('ticker','?')}", key=btn_key):
+                # Check cache first
+                cached = get_existing_deep_dive(signal_id)
+                if cached:
+                    st.session_state[result_key] = cached
+                else:
+                    with st.spinner(f"Running analysis for {s.get('ticker')}..."):
+                        # Import and run dig_deeper
+                        try:
+                            from pipeline.dig_deeper import dig_deeper
+                            result = dig_deeper(signal_id)
+                            st.session_state[result_key] = result
+                        except Exception as e:
+                            st.error(f"Analysis failed: {e}")
+
+            # Show result if available
+            if result_key in st.session_state:
+                result = st.session_state[result_key]
+                if isinstance(result, dict) and "error" not in result:
+                    direction  = result.get("direction", "Neutral")
+                    from_cache = result.get("from_cache", False)
+                    dir_color  = {"Bullish":"#22c55e","Bearish":"#ef4444","Neutral":"#64748b"}.get(direction,"#64748b")
+                    sources    = result.get("source_urls") or []
+
+                    # Build sources HTML to embed inside the box
+                    sources_html = ""
+                    if sources:
+                        links = "".join(
+                            f'<a href="{url}" target="_blank" style="display:block; '
+                            f'font-family:IBM Plex Mono,monospace; font-size:11px; '
+                            f'color:#3b82f6; text-decoration:none; margin-bottom:4px; '
+                            f'word-break:break-all;">↗ {url[:90]}</a>'
+                            for url in sources[:4]
+                        )
+                        sources_html = f"""
+                        <div style="margin-top:16px; padding-top:14px;
+                                    border-top:1px solid #1e3a5f;">
+                            <div style="font-family:IBM Plex Mono,monospace; font-size:10px;
+                                        letter-spacing:0.12em; color:#334155;
+                                        text-transform:uppercase; margin-bottom:8px;">
+                                News Sources
+                            </div>
+                            {links}
+                        </div>"""
+
+                    st.markdown(f"""
+                    <div class="deep-dive-box">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:14px;">
+                            <div style="font-family:IBM Plex Mono,monospace; font-size:11px; color:#475569;">
+                                DEEP DIVE — {s.get('ticker')} &nbsp;·&nbsp;
+                                {'⚡ Live Analysis' if not from_cache else '📦 Cached'}
+                            </div>
+                            <div style="font-family:IBM Plex Mono,monospace; font-size:12px;
+                                        font-weight:600; color:{dir_color};">
+                                {direction.upper()}
+                            </div>
+                        </div>
+                        <div style="font-size:13px; line-height:1.7; color:#cbd5e1;">
+                            {result.get('analysis_text','').replace(chr(10), '<br>')}
+                        </div>
+                        {sources_html}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)

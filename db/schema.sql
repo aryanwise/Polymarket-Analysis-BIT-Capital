@@ -1,5 +1,5 @@
 -- ============================================================
--- Polymarket Signal Scanner Schema
+-- Polymarket Signal Scanner Schema v1
 -- ============================================================
 
 -- Utility: auto-update timestamp trigger
