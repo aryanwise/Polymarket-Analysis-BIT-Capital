@@ -6,7 +6,7 @@ Dark Bloomberg-style dashboard
 """
 import sys
 import os
-
+import json
 # Add project root to path so utils/ can be found
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import yfinance as yf
@@ -279,6 +279,7 @@ def load_event_markets(event_id: str) -> list[dict]:
     return res.data or []
 
 
+
 @st.cache_data(ttl=60)
 def load_stats():
     markets = supabase.table("markets").select("id", count="exact").execute()
@@ -463,91 +464,122 @@ with tab1:
 # ════════════════════════════════════════════════════════════
 
 with tab2:
-    st.markdown('<div class="section-header">All Signals</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">All Signals — Grouped by Event</div>', unsafe_allow_html=True)
 
     signals = load_signals(limit=200)
 
     if not signals:
         st.info("No signals found. Run the filter pipeline first.")
     else:
-        # Filters row
+        # ── Filters ───────────────────────────────────────────
         fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
-
-        all_tickers    = sorted({s.get("ticker","") for s in signals if s.get("ticker")})
+        all_tickers    = sorted({s.get("ticker","")   for s in signals if s.get("ticker")})
         all_categories = sorted({s.get("category","") for s in signals if s.get("category")})
-
         sel_ticker    = fc1.selectbox("Ticker",    ["All"] + all_tickers)
         sel_sentiment = fc2.selectbox("Sentiment", ["All", "Bullish", "Bearish", "Neutral"])
         sel_category  = fc3.selectbox("Category",  ["All"] + all_categories)
         min_score     = fc4.slider("Min Score", 1, 10, 1)
 
-        # Apply filters
         filtered = signals
         if sel_ticker    != "All": filtered = [s for s in filtered if s.get("ticker")    == sel_ticker]
         if sel_sentiment != "All": filtered = [s for s in filtered if s.get("sentiment") == sel_sentiment]
         if sel_category  != "All": filtered = [s for s in filtered if s.get("category")  == sel_category]
         filtered = [s for s in filtered if (s.get("impact_score") or 0) >= min_score]
 
-        st.caption(f"Showing {len(filtered)} signals")
+        # ── Group by event_id so each event appears once ──────
+        # One event card = one unique market question
+        # All affected tickers for that market are shown together
+        from collections import defaultdict
+        grouped: dict[str, dict] = {}   # event_id → event data
+
+        for s in filtered:
+            eid = s.get("event_id") or s.get("market_id", "unknown")
+            mid = s.get("market_id", "")
+
+            if eid not in grouped:
+                grouped[eid] = {
+                    "event_id":    eid,
+                    "market_id":   mid,
+                    "event_title": s.get("event_title",""),
+                    "question":    s.get("question",""),
+                    "category":    s.get("category",""),
+                    "yes_price":   s.get("yes_price", 0),
+                    "volume":      s.get("volume", 0),
+                    "end_date":    s.get("end_date",""),
+                    "impact_score":s.get("impact_score", 0),
+                    "sentiment":   s.get("sentiment","Neutral"),
+                    "tickers":     [],
+                    "reasonings":  [],
+                }
+
+            # Accumulate tickers + reasonings for this event
+            ticker = s.get("ticker","")
+            if ticker and ticker not in grouped[eid]["tickers"]:
+                grouped[eid]["tickers"].append(ticker)
+            reasoning = s.get("reasoning","")
+            if reasoning and reasoning not in grouped[eid]["reasonings"]:
+                grouped[eid]["reasonings"].append(reasoning)
+
+        events_list = list(grouped.values())
+        st.caption(f"Showing {len(events_list)} unique events ({len(filtered)} signals)")
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Render signal cards
-        for s in filtered:
-            sentiment = s.get("sentiment", "Neutral")
-            css_class = sentiment_class(sentiment)
-            badge     = SENTIMENT_BADGE.get(sentiment, "")
-            expiry    = s.get("end_date", "")[:10] if s.get("end_date") else "—"
+        # ── Render one card per event ─────────────────────────
+        for ev in events_list:
+            sentiment  = ev.get("sentiment", "Neutral")
+            css_class  = sentiment_class(sentiment)
+            badge      = SENTIMENT_BADGE.get(sentiment, "")
+            expiry     = ev.get("end_date","")[:10] if ev.get("end_date") else "—"
+            tickers    = ev.get("tickers", [])
+            event_id   = ev.get("event_id","")
+
+            # Build ticker chips
+            ticker_chips = " ".join(
+                f'<span style="background:#1e3a5f; color:#60a5fa; '
+                f'font-family:IBM Plex Mono,monospace; font-size:11px; '
+                f'font-weight:600; padding:2px 7px; border-radius:4px;">'
+                f'{t}</span>'
+                for t in tickers
+            )
 
             st.markdown(f"""
             <div class="signal-card {css_class}">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                    <div style="flex:1">
-                        <div class="signal-question">{s.get('question','')}</div>
-                        <div style="font-size:12px; color:#64748b; margin: 4px 0 6px;">
-                            {s.get('event_title','')}
-                        </div>
-                        <div class="signal-meta">
-                            {badge} &nbsp;
-                            <b style="color:#e2e8f0">{s.get('ticker','?')}</b>
-                            &nbsp;·&nbsp; {s.get('company_name','')}
-                            &nbsp;·&nbsp; Score: <b style="color:#f0f6ff">{s.get('impact_score','?')}/10</b>
-                            &nbsp;·&nbsp; YES: <b style="color:#60a5fa">{fmt_prob(s.get('yes_price',0))}</b>
-                            &nbsp;·&nbsp; Vol: {fmt_vol(s.get('volume',0))}
-                            &nbsp;·&nbsp; Expiry: {expiry}
-                        </div>
-                    </div>
+                <div style="font-size:11px; color:#475569; margin-bottom:4px;
+                            font-family:IBM Plex Mono,monospace; letter-spacing:0.06em;">
+                    {ev.get('category','').upper()} &nbsp;·&nbsp; {ev.get('event_title','')}
+                </div>
+                <div class="signal-question">{ev.get('question','')}</div>
+                <div style="margin: 8px 0 6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                    {badge} &nbsp; {ticker_chips}
+                </div>
+                <div class="signal-meta">
+                    Score: <b style="color:#f0f6ff">{ev.get('impact_score','?')}/10</b>
+                    &nbsp;·&nbsp; YES: <b style="color:#60a5fa">{fmt_prob(ev.get('yes_price',0))}</b>
+                    &nbsp;·&nbsp; Vol: {fmt_vol(ev.get('volume',0))}
+                    &nbsp;·&nbsp; Expiry: {expiry}
                 </div>
                 <div style="margin-top:8px; font-size:12px; color:#64748b; font-style:italic;">
-                    {s.get('reasoning','')}
+                    {ev['reasonings'][0] if ev.get('reasonings') else ''}
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            # ── Event markets expander ──────────────────────────
-            event_id = s.get("event_id") or (
-                supabase.table("markets")
-                .select("event_id")
-                .eq("id", s.get("market_id",""))
-                .single()
-                .execute()
-                .data or {}
-            ).get("event_id")
-
+            # ── Markets expander ──────────────────────────────
             if event_id:
-                with st.expander(f"📂  View all markets under this event"):
+                with st.expander("📂  View all markets under this event"):
                     event_markets = load_event_markets(event_id)
                     if not event_markets:
-                        st.caption("No markets found for this event.")
+                        st.caption("No markets found.")
                     else:
                         rows = []
                         for m in event_markets:
-                            is_current = m.get("question","") == s.get("question","")
+                            is_current = m.get("question","") == ev.get("question","")
                             rows.append({
-                                "Question":  ("★ " if is_current else "") + m.get("question",""),
-                                "YES":       f"{float(m.get('yes_price',0)):.0%}",
-                                "NO":        f"{float(m.get('no_price', 0)):.0%}",
-                                "Volume":    fmt_vol(m.get("volume", 0)),
-                                "Expiry":    m.get("end_date","")[:10] if m.get("end_date") else "—",
+                                "Question": ("★ " if is_current else "") + m.get("question",""),
+                                "YES":      f"{float(m.get('yes_price',0)):.0%}",
+                                "NO":       f"{float(m.get('no_price', 0)):.0%}",
+                                "Volume":   fmt_vol(m.get("volume",0)),
+                                "Expiry":   m.get("end_date","")[:10] if m.get("end_date") else "—",
                             })
                         st.dataframe(
                             pd.DataFrame(rows),
@@ -636,11 +668,10 @@ with tab4:
                 for r in reports
             }
             selected_label = st.radio(
-                "Select a report",
+                "",
                 options=list(report_options.keys()),
                 label_visibility="collapsed"
             )
-
             selected_report = report_options[selected_label]
 
         with r_col2:
@@ -745,7 +776,7 @@ with tab5:
                     with st.spinner(f"Running analysis for {s.get('ticker')}..."):
                         # Import and run dig_deeper
                         try:
-                            from pipeline.dig_deeper import dig_deeper
+                            from pipeline.dig_deeper_analysis import dig_deeper
                             result = dig_deeper(signal_id)
                             st.session_state[result_key] = result
                         except Exception as e:
@@ -758,46 +789,70 @@ with tab5:
                     direction  = result.get("direction", "Neutral")
                     from_cache = result.get("from_cache", False)
                     dir_color  = {"Bullish":"#22c55e","Bearish":"#ef4444","Neutral":"#64748b"}.get(direction,"#64748b")
-                    sources    = result.get("source_urls") or []
 
-                    # Build sources HTML to embed inside the box
-                    sources_html = ""
-                    if sources:
-                        links = "".join(
-                            f'<a href="{url}" target="_blank" style="display:block; '
-                            f'font-family:IBM Plex Mono,monospace; font-size:11px; '
-                            f'color:#3b82f6; text-decoration:none; margin-bottom:4px; '
-                            f'word-break:break-all;">↗ {url[:90]}</a>'
-                            for url in sources[:4]
-                        )
-                        sources_html = f"""
-                        <div style="margin-top:16px; padding-top:14px;
-                                    border-top:1px solid #1e3a5f;">
-                            <div style="font-family:IBM Plex Mono,monospace; font-size:10px;
-                                        letter-spacing:0.12em; color:#334155;
-                                        text-transform:uppercase; margin-bottom:8px;">
-                                News Sources
-                            </div>
-                            {links}
-                        </div>"""
+                    # Normalize sources
+                    sources = result.get("source_urls") or []
+                    if isinstance(sources, str):
+                        try:
+                            import json
+                            sources = json.loads(sources)
+                        except Exception:
+                            sources = []
+                    sources = [s for s in sources if s]
 
+                    # ── Header ──────────────────────────────────────────
                     st.markdown(f"""
-                    <div class="deep-dive-box">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:14px;">
-                            <div style="font-family:IBM Plex Mono,monospace; font-size:11px; color:#475569;">
-                                DEEP DIVE — {s.get('ticker')} &nbsp;·&nbsp;
-                                {'⚡ Live Analysis' if not from_cache else '📦 Cached'}
-                            </div>
-                            <div style="font-family:IBM Plex Mono,monospace; font-size:12px;
-                                        font-weight:600; color:{dir_color};">
-                                {direction.upper()}
-                            </div>
+                    <div style="background:#0d1117; border:1px solid #1e3a5f;
+                                border-radius:8px 8px 0 0; padding:14px 20px;
+                                display:flex; justify-content:space-between;">
+                        <div style="font-family:IBM Plex Mono,monospace; font-size:11px; color:#475569;">
+                            DEEP DIVE — {s.get('ticker')} &nbsp;·&nbsp;
+                            {'⚡ Live Analysis' if not from_cache else '📦 Cached'}
                         </div>
-                        <div style="font-size:13px; line-height:1.7; color:#cbd5e1;">
-                            {result.get('analysis_text','').replace(chr(10), '<br>')}
+                        <div style="font-family:IBM Plex Mono,monospace; font-size:12px;
+                                    font-weight:600; color:{dir_color};">
+                            {direction.upper()}
                         </div>
-                        {sources_html}
                     </div>
                     """, unsafe_allow_html=True)
+
+                    # ── Analysis text (st.markdown renders ## and * correctly) ──
+                    with st.container():
+                        st.markdown(
+                            f'<div style="background:#0d1117; border-left:1px solid #1e3a5f; '
+                            f'border-right:1px solid #1e3a5f; padding:16px 20px; '
+                            f'font-size:13px; line-height:1.7; color:#cbd5e1;">'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+                        # Render markdown inside a styled container
+                        st.markdown(result.get("analysis_text", ""))
+
+                    # ── Sources ─────────────────────────────────────────
+                    if sources:
+                        st.markdown(
+                            '<div style="background:#0d1117; border:1px solid #1e3a5f; '
+                            'border-top:1px solid #1e3a5f; border-radius:0 0 8px 8px; '
+                            'padding:14px 20px;">'
+                            '<div style="font-family:IBM Plex Mono,monospace; font-size:10px; '
+                            'letter-spacing:0.12em; color:#334155; text-transform:uppercase; '
+                            'margin-bottom:8px;">News Sources</div>'
+                            + "".join(
+                                f'<a href="{url}" target="_blank" style="display:block; '
+                                f'font-family:IBM Plex Mono,monospace; font-size:11px; '
+                                f'color:#3b82f6; text-decoration:none; margin-bottom:4px; '
+                                f'word-break:break-all;">↗ {url[:90]}</a>'
+                                for url in sources[:4]
+                            )
+                            + '</div>',
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.markdown(
+                            '<div style="background:#0d1117; border:1px solid #1e3a5f; '
+                            'border-radius:0 0 8px 8px; padding:10px 20px; '
+                            'font-size:11px; color:#334155;">No news sources found.</div>',
+                            unsafe_allow_html=True
+                        )
 
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
