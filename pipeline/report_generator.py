@@ -1,201 +1,206 @@
+"""
+pipeline/report_generator.py
+
+Generates the daily BIT Capital Portfolio Impact Report.
+Fetches high-impact signals from Supabase, synthesizes them into actionable insights 
+using Groq (Llama-3), and saves the final report back to the database with relational links.
+"""
 import sys
 import os
-
-# Add project root to path so utils/ can be found
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import time
+import logging
 from groq import Groq
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 
-load_dotenv()
-
+# Add project root to path so utils/ can be found
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils.supabase_client import get_service_client
+
+# --- Configuration & Setup ---
+load_dotenv()
 supabase = get_service_client()
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-client = Groq(api_key=os.environ["GROQ_API_KEY"])
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
-
-# ── Fetch top signals from DB ─────────────────────────────────
+# ── 1. Fetch top signals from DB ──────────────────────────────
 
 def fetch_top_signals(limit: int = 15) -> list[dict]:
     """
     Fetch the top relevant signals joined with market + event data.
     Uses the signal_feed view which already filters is_relevant=TRUE.
     """
-    res = (
-        supabase.table("signal_feed")
-        .select("*")
-        .order("impact_score", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    return res.data or []
+    logger.info(f"Fetching top {limit} signals from Supabase 'signal_feed'...")
+    try:
+        res = (
+            supabase.table("signal_feed")
+            .select("*")
+            .order("impact_score", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        signals = res.data or []
+        logger.info(f"Retrieved {len(signals)} high-impact signals.")
+        return signals
+    except Exception as e:
+        logger.error(f"Failed to fetch signals from Supabase: {e}")
+        return []
 
-
-# ── Build prompt ──────────────────────────────────────────────
+# ── 2. Build prompt ───────────────────────────────────────────
 
 def build_report_prompt(signals: list[dict]) -> tuple[str, list[str]]:
     """
-    Format signals into a prompt string.
-    Returns (prompt, list_of_tickers_mentioned).
+    Format signals into a structured prompt string.
+    Returns (prompt_context, list_of_tickers_mentioned).
     """
     signal_lines = ""
     tickers_seen = set()
 
     for s in signals:
-        ticker  = s.get("ticker", "?")
-        company = s.get("company_name", "")
+        ticker = s.get("ticker", "Unknown")
+        # Handle cases where company_name might be missing from the view
+        company = s.get("company_name", ticker) 
         tickers_seen.add(ticker)
+        
+        question = s.get("question", "Unknown Market Event")
+        sentiment = s.get("sentiment", "Neutral")
+        score = s.get("impact_score", 0)
+        reasoning = s.get("reasoning", "No DB reasoning provided.")
+        
+        # Safely parse probability
+        try:
+            prob = float(s.get("yes_price", 0)) * 100
+        except (ValueError, TypeError):
+            prob = 0.0
 
-        signal_lines += (
-            f"- [{s.get('sentiment','?').upper()}] "
-            f"{s.get('question','?')} \n"
-            f"  Target: {ticker} ({company}) | "
-            f"Score: {s.get('impact_score','?')}/10 | "
-            f"YES Probability: {float(s.get('yes_price', 0)):.0%} | "
-            f"Volume: ${float(s.get('volume', 0)):,.0f}\n"
-            f"  Reasoning: {s.get('reasoning','')}\n\n"
-        )
+        signal_lines += f"- [TICKER: {ticker}] {company}\n"
+        signal_lines += f"  Event: {question} (Implied Probability: {prob:.1f}%)\n"
+        signal_lines += f"  Signal: {sentiment.upper()} (Impact Score: {score}/10)\n"
+        signal_lines += f"  DB Analysis: {reasoning}\n\n"
 
-    prompt = f"""You are the Head of Research at BIT Capital, a Berlin-based tech-focused fund.
-You are writing the Daily Alpha Report for Portfolio Managers based on today's Polymarket signals.
+    return signal_lines.strip(), list(tickers_seen)
 
-Today's top prediction market signals:
-{signal_lines}
+# ── 3. Generate Report via LLM ────────────────────────────────
 
-Write a professional investment report in Markdown with these sections:
-
-# BIT Capital — Daily Alpha Report ({datetime.now().strftime('%B %d, %Y')})
-
-## Executive Summary
-2-3 sentences. What is the dominant macro theme today? What is the overall risk posture?
-
-## Top 3 High-Conviction Signals
-For each: explain the market, current probability, what it implies for the specific stock, and why it matters NOW.
-
-## Sector Breakdown
-Group signals into: Crypto Infrastructure | Semiconductors | Enterprise Software/AI
-For each sector: what do the collective signals say? Is the sector in risk-on or risk-off mode?
-
-## Actionable Insights
-3-5 specific recommendations. Examples: 'Trim TSM exposure ahead of tariff resolution', 'Add to IREN on rate stability'.
-
-## Risk Flags
-Any signals that contradict each other or suggest elevated uncertainty.
-
-Rules:
-- Connect the dots across signals. If the Fed is holding rates AND Bitcoin ETF flows are strong, say what that means for IREN and HUT together.
-- Reference specific probabilities and volumes.
-- Do not just summarise — interpret.
-- Write for a sophisticated audience that already knows the holdings."""
-
-    return prompt, sorted(tickers_seen)
-
-
-# ── Generate report ───────────────────────────────────────────
-
-def generate_report(top_n: int = 15) -> dict | None:
+def generate_report_content(signal_context: str) -> str:
+    """Uses Groq's Llama 3 to synthesize the signals into a professional report."""
+    current_date = datetime.now(timezone.utc).strftime("%B %d, %Y")
+    
+    system_prompt = """
+    You are the Lead Quantitative Strategist at BIT Capital. 
+    Your job is to read raw prediction market signals and write the 'Daily Alpha Report' for the portfolio managers.
+    
+    CRITICAL INSTRUCTIONS:
+    - Do not just list the signals. Synthesize them into a cohesive narrative.
+    - Write in a sharp, professional, institutional finance tone.
+    - Use Markdown formatting extensively (headers, bullet points, bold text).
+    
+    STRUCTURE YOUR REPORT EXACTLY LIKE THIS:
+    # 📈 BIT Capital Daily Alpha Report
+    **Date:** [Insert Today's Date]
+    
+    ## 1. Executive Summary
+    (1 concise paragraph summarizing the overarching macro/tech themes from the data)
+    
+    ## 2. Sector Impacts & Transmission Mechanisms
+    (Group by sector e.g., AI Infrastructure, Crypto Mining, FinTech. Detail how the specific prediction market odds impact the target tickers.)
+    
+    ## 3. Actionable Portfolio Adjustments
+    (Provide concrete recommendations: Overweight, Underweight, Monitor based on the sentiment and impact scores).
     """
-    Full pipeline:
-    1. Fetch top signals from DB
-    2. Build prompt
-    3. Call Groq
-    4. Save to reports + report_signals tables
-    Returns the saved report record or None on failure.
-    """
-    started_at = datetime.now(timezone.utc)
-    print(f"\n{'='*55}")
-    print(f"  REPORT GENERATOR START — {started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    print(f"{'='*55}\n")
 
-    # Step 1: fetch signals
-    signals = fetch_top_signals(limit=top_n)
+    user_prompt = f"Today is {current_date}. Here are the top prediction market signals detected overnight:\n\n{signal_context}\n\nPlease generate the Daily Alpha Report."
 
-    if not signals:
-        print("No relevant signals found. Run the filter pipeline first.")
-        return None
-
-    print(f"  Fetched {len(signals)} signals for report")
-    for s in signals:
-        print(f"  [{s.get('sentiment','?'):>7}] score={s.get('impact_score','?')} | "
-              f"{s.get('ticker','?')} | {s.get('question','')[:60]}")
-
-    # Step 2: build prompt
-    prompt, tickers = build_report_prompt(signals)
-    print(f"\n  Tickers covered: {', '.join(tickers)}")
-
-    # Step 3: call Groq
-    print("\n  Generating report with Groq (llama-3.3-70b)...")
-    report_content = None
-    delays = [1, 2, 4, 8]
-
+    logger.info("Generating report with Llama-3.3-70b...")
+    
+    # Exponential backoff for API robustness
+    delays = [1, 2, 4, 8, 16]
     for delay in delays:
         try:
-            response = client.chat.completions.create(
+            completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
-                    {"role": "system", "content": "You are a professional financial research analyst writing for sophisticated investors."},
-                    {"role": "user",   "content": prompt}
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.4,
+                temperature=0.2 # Low temp for analytical consistency
             )
-            report_content = response.choices[0].message.content
-            break
-
+            return completion.choices[0].message.content
         except Exception as e:
             if delay == delays[-1]:
-                print(f"  Report generation failed: {e}")
+                logger.error(f"LLM generation failed after retries: {e}")
                 return None
-            print(f"  Rate limit / error — retrying in {delay}s...")
+            logger.warning(f"Groq API error. Retrying in {delay}s... ({e})")
             time.sleep(delay)
 
-    # Step 4: save report to DB
-    print("\n  Saving report to database...")
+# ── 4. Main Execution ─────────────────────────────────────────
+
+def run_report_pipeline():
+    started_at = datetime.now(timezone.utc)
+    logger.info("Starting Morning Report Generation Pipeline...")
+
+    # Step 1: Fetch data
+    signals = fetch_top_signals(limit=15)
+    if not signals:
+        logger.warning("No signals found in 'signal_feed'. Aborting report generation.")
+        return
+
+    # Step 2: Build context
+    signal_context, tickers = build_report_prompt(signals)
+    
+    # Step 3: Generate report
+    report_content = generate_report_content(signal_context)
+    if not report_content:
+        return
+
+    # Step 4: Save report to DB
+    logger.info("Saving report to Supabase 'reports' table...")
     try:
         report_row = {
-            "content":      report_content,
-            "tickers":      tickers,
+            "content": report_content,
+            "tickers": tickers,
             "signal_count": len(signals),
-            "model_used":   "llama-3.3-70b-versatile",
+            "model_used": "llama-3.3-70b-versatile",
             "generated_at": started_at.isoformat(),
         }
-        result     = supabase.table("reports").insert(report_row).execute()
-        report_id  = result.data[0]["id"]
-        print(f"  Report saved — ID: {report_id}")
+        result = supabase.table("reports").insert(report_row).execute()
+        report_id = result.data[0]["id"]
+        logger.info(f"Report saved — ID: {report_id}")
     except Exception as e:
-        print(f"  Failed to save report: {e}")
-        return None
+        logger.error(f"Failed to save report: {e}")
+        return
 
-    # Step 5: link signals to report in report_signals
-    print("  Linking signals to report...")
+    # Step 5: Link signals to report relationally
+    logger.info("Linking signals to report in 'report_signals' table...")
     linked = 0
     for s in signals:
+        signal_id = s.get("signal_id")
+        if not signal_id:
+            continue # Skip if view doesn't provide signal_id
+            
         try:
             supabase.table("report_signals").insert({
                 "report_id": report_id,
-                "signal_id": s["signal_id"],
+                "signal_id": signal_id,
             }).execute()
             linked += 1
         except Exception as e:
-            print(f"  Failed to link signal {s.get('signal_id')}: {e}")
+            logger.warning(f"Failed to link signal {signal_id}: {e}")
 
-    # Step 6: summary
+    # Step 6: Summary
     elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
-    print(f"\n{'='*55}")
-    print(f"  REPORT COMPLETE — {elapsed:.1f}s")
-    print(f"  Report ID:      {report_id}")
-    print(f"  Tickers:        {', '.join(tickers)}")
-    print(f"  Signals linked: {linked}/{len(signals)}")
-    print(f"{'='*55}\n")
-
-    # Preview
-    print(report_content[:600] + "\n...")
-
-    return result.data[0]
-
-
-# ── Entry point ───────────────────────────────────────────────
+    logger.info("=" * 60)
+    logger.info("REPORT GENERATION COMPLETE - %.1fs", elapsed)
+    logger.info("  Report ID      : %s", report_id)
+    logger.info("  Tickers Covered: %s", ", ".join(tickers))
+    logger.info("  Signals Linked : %d/%d", linked, len(signals))
+    logger.info("=" * 60)
 
 if __name__ == "__main__":
-    generate_report(top_n=15)
+    run_report_pipeline()

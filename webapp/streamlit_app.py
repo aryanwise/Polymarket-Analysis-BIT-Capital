@@ -212,7 +212,7 @@ SENTIMENT_BADGE = {
     "Neutral": '<span class="badge badge-neutral">— Neutral</span>',
 }
 
-HOLDINGS_META = {
+HOLDINGS_BIT = {
     "IREN":  "IREN Limited",
     "MSFT":  "Microsoft",
     "GOOGL": "Alphabet",
@@ -223,6 +223,10 @@ HOLDINGS_META = {
     "HUT":   "Hut 8",
     "HOOD":  "Robinhood",
     "DDOG":  "Datadog",
+    "AMZN":  "Amazon",
+    "COIN":  "Coinbase",
+    "META":  "Meta",
+    "NVDA":  "NVIDIA",
 }
 
 def fmt_vol(v):
@@ -297,7 +301,7 @@ def load_stats():
 def load_stock_prices_db():
     """Fallback prices from DB."""
     rows = []
-    for ticker in HOLDINGS_META:
+    for ticker in HOLDINGS_BIT:
         res = (
             supabase.table("stock_prices")
             .select("ticker, price, change_pct, fetched_at")
@@ -314,7 +318,7 @@ def load_stock_prices_db():
 def fetch_live_prices():
     """Fetch live prices from Yahoo Finance."""
     prices = {}
-    tickers = list(HOLDINGS_META.keys())
+    tickers = list(HOLDINGS_BIT.keys())
     try:
         data = yf.download(
             tickers,
@@ -425,7 +429,7 @@ with tab1:
 
     @st.cache_data(ttl=300)
     def fetch_historical_prices(period="1mo"):
-        tickers = list(HOLDINGS_META.keys())
+        tickers = list(HOLDINGS_BIT.keys())
         try:
             data = yf.download(
                 tickers,
@@ -462,7 +466,7 @@ with tab1:
 
     # ── Animated ticker tape ──────────────────────────────────
     tape_items = []
-    for ticker, name in HOLDINGS_META.items():
+    for ticker, name in HOLDINGS_BIT.items():
         p   = live.get(ticker, {})
         px_ = p.get("price", 0)
         chg = p.get("change_pct", 0)
@@ -499,7 +503,7 @@ with tab1:
 
     # ── Screener table ────────────────────────────────────────
     screener_rows = []
-    for ticker, name in HOLDINGS_META.items():
+    for ticker, name in HOLDINGS_BIT.items():
         p   = live.get(ticker, {})
         px_ = p.get("price", 0)
         chg = p.get("change_pct", 0)
@@ -548,7 +552,7 @@ with tab1:
     # Ticker selector for chart
     chart_tickers = st.multiselect(
         "Select tickers to compare",
-        options=list(HOLDINGS_META.keys()),
+        options=list(HOLDINGS_BIT.keys()),
         default=["IREN", "MSFT", "GOOGL", "HUT"],
         label_visibility="visible",
     )
@@ -584,7 +588,7 @@ with tab1:
                 x=dates,
                 y=values,
                 mode="lines",
-                name=f"{ticker} — {HOLDINGS_META[ticker]}",
+                name=f"{ticker} — {HOLDINGS_BIT[ticker]}",
                 line=dict(color=color, width=2),
                 hovertemplate=(
                     f"<b>{ticker}</b><br>"
@@ -836,10 +840,10 @@ with tab3:
                 for r in db_prices}
 
     # Render 2 rows of 5 cards
-    tickers = list(HOLDINGS_META.keys())
-    for row_start in [0, 5]:
-        cols = st.columns(5)
-        for i, ticker in enumerate(tickers[row_start:row_start+5]):
+    tickers = list(HOLDINGS_BIT.keys())
+    for row_start in [0, 7]:
+        cols = st.columns(7)
+        for i, ticker in enumerate(tickers[row_start:row_start+7]):
             p = live.get(ticker, {})
             price  = p.get("price",      0)
             chg    = p.get("change_pct", 0)
@@ -851,7 +855,7 @@ with tab3:
             cols[i].markdown(f"""
             <div class="price-card">
                 <div class="price-ticker">{ticker}</div>
-                <div class="price-company">{HOLDINGS_META[ticker]}</div>
+                <div class="price-company">{HOLDINGS_BIT[ticker]}</div>
                 <div class="price-value">${price:,.2f}</div>
                 <div class="{chg_cls}">{chg_str}</div>
                 <div style="font-size:10px; color:#334155; margin-top:6px;">{live_dot} {'Live' if p.get('live') else 'Cached'}</div>
@@ -864,7 +868,7 @@ with tab3:
     # Price table
     st.markdown('<div class="section-header">Price Table</div>', unsafe_allow_html=True)
     rows = []
-    for ticker, meta in HOLDINGS_META.items():
+    for ticker, meta in HOLDINGS_BIT.items():
         p = live.get(ticker, {})
         rows.append({
             "Ticker":  ticker,
