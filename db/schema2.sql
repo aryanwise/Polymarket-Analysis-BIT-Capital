@@ -38,7 +38,11 @@ INSERT INTO stocks (ticker, company_name, sector, thesis) VALUES
   ('TSM',   'TSMC',                'Semiconductors',     'Foundry for high-end AI semiconductors.'),
   ('HUT',   'Hut 8 Corp.',         'Crypto Mining',      'Diversified crypto infrastructure.'),
   ('HOOD',  'Robinhood Markets',   'Fintech',            'Gateway for retail crypto and equity trading.'),
-  ('DDOG',  'Datadog Inc.',        'Cloud Observability','Cloud observability and security monitoring.');
+  ('DDOG',  'Datadog Inc.',        'Cloud Observability','Cloud observability and security monitoring.'),
+  ('COIN', 'Coinbase Global',    'Crypto',         'Crypto exchange bellwether for regulation risk'),
+  ('NVDA', 'NVIDIA Corporation', 'Semiconductors', 'AI chip infrastructure leader'),
+  ('META', 'Meta Platforms',     'AI/Social',      'AI infrastructure and ad revenue'),
+  ('AMZN', 'Amazon',             'Cloud/AI',       'AWS cloud and Bedrock AI platform');
 
 
 -- ============================================================
