@@ -48,7 +48,7 @@ CREATE TABLE signals (
     impact_type   TEXT         CHECK (impact_type IN ('margin','revenue','sentiment','regulatory','operational')),
     time_horizon  TEXT         CHECK (time_horizon IN ('short-term','medium-term','long-term')),
     reasoning     TEXT,
-    model_used    TEXT         DEFAULT 'gemini-flash-lite-latest',
+    model_used    TEXT         DEFAULT 'gemini-2.5-flash-lite',
     created_at    TIMESTAMPTZ  DEFAULT NOW(),
 
     UNIQUE (market_id, ticker)
@@ -67,7 +67,7 @@ CREATE TABLE reports (
     content       TEXT        NOT NULL,
     tickers       TEXT[],
     signal_count  INTEGER,
-    model_used    TEXT        DEFAULT 'gemini-flash-lite-latest',
+    model_used    TEXT        DEFAULT 'gemini-2.5-flash-lite',
     generated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -92,7 +92,7 @@ CREATE TABLE deep_dives (
     news_query     TEXT,
     news_headlines TEXT,
     source_urls    TEXT[],
-    model_used     TEXT         DEFAULT 'llama-3.3-70b-versatile',
+    model_used     TEXT         DEFAULT 'gemini-2.5-flash-lite',
     created_at     TIMESTAMPTZ  DEFAULT NOW()
 );
 
