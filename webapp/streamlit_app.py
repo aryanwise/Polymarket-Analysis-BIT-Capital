@@ -11,8 +11,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
 load_dotenv()
 from pipeline.explore_polymarket_news import (
     fetch_event_from_text,
@@ -31,7 +29,7 @@ st.set_page_config(
 )
 
 # ── CSS ───────────────────────────────────────────────────────
-st.markdown("""
+st.html("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
@@ -154,7 +152,7 @@ hr { border-color:#27272a; margin:20px 0; }
     border-radius:6px; transition:all .15s; }
 .stButton>button:hover { border-color:#3b82f6; color:#3b82f6; }
 </style>
-""", unsafe_allow_html=True)
+""")
 
 
 # ── Constants ─────────────────────────────────────────────────
@@ -237,12 +235,12 @@ def fetch_live_prices(tickers):
 
 # ── Sidebar ───────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
+    st.html("""
     <div class="logo-wrap">
         <div class="logo-tag">BIT Capital</div>
         <div class="logo-name">Signal Scanner</div>
         <div class="logo-sub">Polymarket Intelligence Platform</div>
-    </div>""", unsafe_allow_html=True)
+    </div>""")
     st.markdown("---")
 
     stats = load_stats()
@@ -251,11 +249,10 @@ with st.sidebar:
     st.metric("Holdings Tracked",  stats["stocks"])
 
     st.markdown("---")
-    st.markdown(
+    st.html(
         f"<div style='font-family:JetBrains Mono,monospace;font-size:10px;color:#3f3f46;'>"
-        f"Last refresh<br>{datetime.now().strftime('%H:%M:%S')} local</div>",
-        unsafe_allow_html=True)
-    if st.button("↺  Refresh Data", use_container_width=True):
+        f"Last refresh<br>{datetime.now().strftime('%H:%M:%S')} local</div>")
+    if st.button("↺  Refresh Data", width="stretch"):
         st.cache_data.clear(); st.rerun()
 
 
@@ -279,7 +276,7 @@ with tab1:
     except ImportError:
         HAS_PLOTLY = False
 
-    st.markdown('<div class="sh">Portfolio Overview</div>', unsafe_allow_html=True)
+    st.html('<div class="sh">Portfolio Overview</div>')
 
     # Top metrics
     c1,c2,c3,c4 = st.columns(4)
@@ -288,7 +285,7 @@ with tab1:
     c3.metric("Holdings",        stats["stocks"])
     c4.metric("Last Run", datetime.now().strftime("%H:%M"))
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.html("<br>")
 
     signals = load_signals(limit=200)
 
@@ -296,7 +293,7 @@ with tab1:
         st.info("No signals yet. Run the pipeline: `python scheduler.py`")
     else:
         # Cluster signal summary — count unique markets per cluster
-        st.markdown('<div class="sh">Active Signals by Cluster</div>', unsafe_allow_html=True)
+        st.html('<div class="sh">Active Signals by Cluster</div>')
 
         cluster_data = {}
         seen_mids = {}
@@ -327,7 +324,7 @@ with tab1:
             else:
                 prob_lbl = "TAIL RISK"; prob_col = "#a78bfa"
             with cols[i]:
-                st.markdown(f"""
+                st.html(f"""
                 <div class="card" style="text-align:center">
                     <div style="font-size:11px;color:#52525b;margin-bottom:6px">{cluster}</div>
                     <div style="font-family:'JetBrains Mono',monospace;font-size:26px;
@@ -336,12 +333,12 @@ with tab1:
                     <div style="font-size:10px;color:{prob_col};font-family:'JetBrains Mono',monospace">
                         avg YES {avg_yes:.0%} · {prob_lbl}
                     </div>
-                </div>""", unsafe_allow_html=True)
+                </div>""")
 
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.html("<br>")
 
         # Top signals — deduplicated by market, all tickers grouped
-        st.markdown('<div class="sh">Top Signals This Run</div>', unsafe_allow_html=True)
+        st.html('<div class="sh">Top Signals This Run</div>')
 
         # Build one entry per unique market with all tickers
         seen_mid = set()
@@ -356,22 +353,31 @@ with tab1:
 
         top_markets = list(market_groups.values())[:6]
         for m in top_markets:
-            yes     = float(m.get("yes_price") or 0)
-            vol     = m.get("volume", 0)
-            end     = (m.get("end_date","") or "")[:10] or "—"
-            tickers = m.get("all_tickers", [m.get("ticker","?")])
-            chips   = " ".join(f'<span class="chip">{t}</span>' for t in tickers)
+            yes      = float(m.get("yes_price") or 0)
+            vol      = m.get("volume", 0)
+            end      = (m.get("end_date","") or "")[:10] or "—"
+            tickers  = m.get("all_tickers", [m.get("ticker","?")])
+            question = m.get("question","")
+            event    = m.get("event_title","")
+            chips    = " ".join(f'<span class="chip">{t}</span>' for t in tickers)
 
-            # YES probability colour
+            import html as _html
+            q_safe = _html.escape(question)
+            e_safe = _html.escape(event)
+
+            event_line = ""
+            if e_safe and e_safe.lower() not in q_safe.lower()[:60]:
+                event_line = f'<div style="font-size:10px;color:#3f3f46;margin-bottom:6px">↳ {e_safe}</div>'
+
             if yes >= 0.65:   yes_col = "#f59e0b"
             elif yes >= 0.40: yes_col = "#60a5fa"
             else:             yes_col = "#a78bfa"
 
-            st.markdown(f"""
+            st.html(f"""
             <div class="card neut">
-                <div class="card-ev">{m.get('event_title','')}</div>
-                <div class="card-q">{m.get('question','')}</div>
-                <div style="margin:8px 0 6px">{chips}</div>
+                <div class="card-q">{q_safe}</div>
+                {event_line}
+                <div style="margin:6px 0">{chips}</div>
                 <div class="card-meta">
                     <span style="color:#52525b">YES</span>&nbsp;
                     <b style="color:{yes_col}">{fmt_prob(yes)}</b>
@@ -380,16 +386,16 @@ with tab1:
                     &nbsp;·&nbsp;
                     <span style="color:#52525b">Exp</span>&nbsp;{end}
                 </div>
-            </div>""", unsafe_allow_html=True)
+            </div>""")
 
 
 # ════════════════════════════════════════════════════════════
 # TAB 2 — SIGNAL FEED
 # ════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown('<div class="sh">Signal Feed — All Signals</div>', unsafe_allow_html=True)
+    st.html('<div class="sh">Signal Feed — All Signals</div>')
 
-    # ── Manual Market Explorer (NEW FEATURE) ──
+        # ── Manual Market Explorer (NEW FEATURE) ──
     st.markdown("### 🔎 Explore Any Polymarket")
 
     col1, col2 = st.columns([4,1])
@@ -468,26 +474,37 @@ with tab2:
             filtered = [m for m in filtered if float(m.get("volume") or 0) >= min_vol_k * 1000]
 
         st.caption(f"Showing {len(filtered)} unique markets")
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.html("<br>")
 
         for m in filtered:
-            yes     = float(m.get("yes_price") or 0)
-            vol     = m.get("volume", 0)
-            end     = (m.get("end_date","") or "")[:10] or "—"
-            tickers = m.get("all_tickers", [m.get("ticker","?")])
-            sig_id  = m.get("signal_id")
-            chips   = " ".join(f'<span class="chip">{t}</span>' for t in tickers)
+            yes      = float(m.get("yes_price") or 0)
+            vol      = m.get("volume", 0)
+            end      = (m.get("end_date","") or "")[:10] or "—"
+            tickers  = m.get("all_tickers", [m.get("ticker","?")])
+            sig_id   = m.get("signal_id")
+            question = m.get("question","")
+            event    = m.get("event_title","")
+            chips    = " ".join(f'<span class="chip">{t}</span>' for t in tickers)
 
-            # Colour card by probability
-            if yes >= 0.65:   yes_col = "#f59e0b"; cls = "neut"
-            elif yes >= 0.40: yes_col = "#60a5fa"; cls = "neut"
-            else:             yes_col = "#a78bfa"; cls = "neut"
+            # Escape to prevent question text breaking the HTML structure
+            import html as _html
+            q_safe = _html.escape(question)
+            e_safe = _html.escape(event)
 
-            st.markdown(f"""
-            <div class="card {cls}">
-                <div class="card-ev">{m.get('event_title','')}</div>
-                <div class="card-q">{m.get('question','')}</div>
-                <div style="margin:8px 0 6px">{chips}</div>
+            # Show event only if it adds context beyond the question
+            event_line = ""
+            if e_safe and e_safe.lower() not in q_safe.lower()[:80]:
+                event_line = f'<div style="font-size:10px;color:#3f3f46;margin-bottom:6px">↳ {e_safe}</div>'
+
+            if yes >= 0.65:   yes_col = "#f59e0b"
+            elif yes >= 0.40: yes_col = "#60a5fa"
+            else:             yes_col = "#a78bfa"
+
+            st.html(f"""
+            <div class="card neut">
+                <div class="card-q">{q_safe}</div>
+                {event_line}
+                <div style="margin:6px 0">{chips}</div>
                 <div class="card-meta">
                     <span style="color:#52525b">YES</span>&nbsp;
                     <b style="color:{yes_col}">{fmt_prob(yes)}</b>
@@ -496,7 +513,7 @@ with tab2:
                     &nbsp;·&nbsp;
                     <span style="color:#52525b">Exp</span>&nbsp;{end}
                 </div>
-            </div>""", unsafe_allow_html=True)
+            </div>""")
 
             # Dig Deeper button
             if sig_id:
@@ -526,26 +543,31 @@ with tab2:
                     sources = [s for s in sources if s]
 
                     primary_ticker = tickers[0] if tickers else "—"
+                    cached_label   = "📦 Cached" if cached else "⚡ Live"
 
-                    # Header
-                    st.markdown(f"""
+                    # Header — show question context not just ticker
+                    st.html(f"""
                     <div style="background:#111113;border:1px solid #1e3a5f;border-radius:10px 10px 0 0;
-                                padding:14px 20px;display:flex;justify-content:space-between;
-                                align-items:center;margin-top:8px">
-                        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;
-                                    letter-spacing:.1em;text-transform:uppercase;color:#52525b">
-                            Deep Dive · {primary_ticker} · {'📦 Cached' if cached else '⚡ Live'}
+                                padding:14px 20px;margin-top:8px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;
+                                    margin-bottom:6px">
+                            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;
+                                        letter-spacing:.1em;text-transform:uppercase;color:#52525b">
+                                Deep Dive · {primary_ticker} · {cached_label}
+                            </div>
+                            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;
+                                        font-weight:600;color:{d_color}">{direction.upper()}</div>
                         </div>
-                        <div style="font-family:'JetBrains Mono',monospace;font-size:13px;
-                                    font-weight:600;color:{d_color}">{direction.upper()}</div>
-                    </div>""", unsafe_allow_html=True)
+                        <div style="font-size:12px;color:#52525b;font-style:italic">
+                            {question}
+                        </div>
+                    </div>""")
 
                     # Analysis body — use st.markdown so ## headings render properly
-                    st.markdown(
+                    st.html(
                         f'<div style="background:#0c0c0f;border-left:1px solid #1e3a5f;'
                         f'border-right:1px solid #1e3a5f;padding:16px 20px;">'
-                        f'</div>',
-                        unsafe_allow_html=True
+                        f'</div>'
                     )
                     with st.container():
                         st.markdown(analysis)
@@ -559,7 +581,7 @@ with tab2:
                             f'word-break:break-all;">↗ {u[:100]}</a>'
                             for u in sources[:4]
                         )
-                        st.markdown(f"""
+                        st.html(f"""
                         <div style="background:#0c0c0f;border:1px solid #1e3a5f;
                                     border-top:1px solid #1e2035;border-radius:0 0 10px 10px;
                                     padding:14px 20px">
@@ -567,21 +589,21 @@ with tab2:
                                         letter-spacing:.1em;text-transform:uppercase;
                                         color:#3f3f46;margin-bottom:10px">News Sources</div>
                             {src_links}
-                        </div>""", unsafe_allow_html=True)
+                        </div>""")
                     else:
-                        st.markdown("""
+                        st.html("""
                         <div style="background:#0c0c0f;border:1px solid #1e3a5f;
                                     border-radius:0 0 10px 10px;padding:12px 20px">
                             <span style="font-family:'JetBrains Mono',monospace;
                                          font-size:11px;color:#3f3f46">No news sources found</span>
-                        </div>""", unsafe_allow_html=True)
+                        </div>""")
 
 
 # ════════════════════════════════════════════════════════════
 # TAB 3 — REPORTS
 # ════════════════════════════════════════════════════════════
 with tab3:
-    st.markdown('<div class="sh">Alpha Reports</div>', unsafe_allow_html=True)
+    st.html('<div class="sh">Alpha Reports</div>')
 
     reports = load_reports()
     if not reports:
@@ -589,7 +611,7 @@ with tab3:
     else:
         rc1, rc2 = st.columns([1, 2])
         with rc1:
-            st.markdown('<div class="sh">Report History</div>', unsafe_allow_html=True)
+            st.html('<div class="sh">Report History</div>')
             options = {}
             for r in reports:
                 ts  = r.get("generated_at","")[:16].replace("T"," ")
@@ -603,8 +625,8 @@ with tab3:
 
             # Report metadata
             tickers = selected.get("tickers") or []
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(f"""
+            st.html("<br>")
+            st.html(f"""
             <div class="card">
                 <div style="font-family:'JetBrains Mono',monospace;font-size:10px;
                             letter-spacing:.1em;text-transform:uppercase;color:#52525b;
@@ -615,7 +637,7 @@ with tab3:
                     <div style="margin-top:10px">Tickers covered:</div>
                     <div style="margin-top:6px">{"".join(f'<span class="chip">{t}</span>' for t in tickers)}</div>
                 </div>
-            </div>""", unsafe_allow_html=True)
+            </div>""")
 
             # Download
             st.download_button(
@@ -623,22 +645,22 @@ with tab3:
                 data=selected.get("content",""),
                 file_name=f"bit_alpha_{selected_lbl[:10].replace(' ','_')}.md",
                 mime="text/markdown",
-                use_container_width=True,
+                width="stretch",
             )
 
         with rc2:
-            st.markdown('<div class="sh">Report Content</div>', unsafe_allow_html=True)
+            st.html('<div class="sh">Report Content</div>')
             content = selected.get("content","")
-            st.markdown(f'<div class="report-wrap">', unsafe_allow_html=True)
+            st.html(f'<div class="report-wrap">')
             st.markdown(content)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.html('</div>')
 
 
 # ════════════════════════════════════════════════════════════
 # TAB 4 — HOLDINGS (live prices + signal heatmap)
 # ════════════════════════════════════════════════════════════
 with tab4:
-    st.markdown('<div class="sh">BIT Capital Holdings</div>', unsafe_allow_html=True)
+    st.html('<div class="sh">BIT Capital Holdings</div>')
 
     stocks  = load_stocks()
     signals = load_signals(limit=200)
@@ -684,7 +706,7 @@ with tab4:
             px_str    = f"${px:,.2f}" if px else "—"
 
             with cols[i]:
-                st.markdown(f"""
+                st.html(f"""
                 <div class="px-card">
                     <div class="px-tkr">{t}</div>
                     <div class="px-co">{stock.get('company_name','')}</div>
@@ -695,12 +717,12 @@ with tab4:
                     <div style="font-size:10px;color:#3f3f46;margin-top:2px">
                         {stock.get('sector','')}
                     </div>
-                </div>""", unsafe_allow_html=True)
+                </div>""")
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.html("<br>")
 
     # Signal count per holding — simple clean view
-    st.markdown('<div class="sh">Signal Coverage by Holding</div>', unsafe_allow_html=True)
+    st.html('<div class="sh">Signal Coverage by Holding</div>')
     coverage_rows = []
     for stock in stocks:
         t   = stock["ticker"]
@@ -719,7 +741,7 @@ with tab4:
 
     st.dataframe(
         pd.DataFrame(coverage_rows),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Thesis":  st.column_config.TextColumn(width="large"),
@@ -732,14 +754,14 @@ with tab4:
 # TAB 5 — CONFIGURE
 # ════════════════════════════════════════════════════════════
 with tab5:
-    st.markdown('<div class="sh">Portfolio Configuration</div>', unsafe_allow_html=True)
+    st.html('<div class="sh">Portfolio Configuration</div>')
 
     cfg_tab1, cfg_tab2 = st.tabs(["🏦  Holdings", "➕  Add Holding"])
 
     with cfg_tab1:
         stocks = load_stocks()
         st.caption(f"{len(stocks)} holdings configured")
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.html("<br>")
 
         # Group by cluster
         by_cluster = {}
@@ -752,24 +774,23 @@ with tab5:
             for stock in cluster_stocks:
                 col_a, col_b, col_c = st.columns([1, 3, 1])
                 with col_a:
-                    st.markdown(f'<span class="chip">{stock["ticker"]}</span>', unsafe_allow_html=True)
+                    st.html(f'<span class="chip">{stock["ticker"]}</span>')
                 with col_b:
                     st.markdown(
                         f'<div style="font-size:12px;color:#a1a1aa;padding:8px 0">'
                         f'{stock.get("company_name","")} · '
                         f'<span style="color:#52525b">{stock.get("sector","")}</span><br>'
                         f'<span style="font-size:11px;color:#52525b">{stock.get("thesis","")}</span>'
-                        f'</div>', unsafe_allow_html=True)
+                        f'</div>')
                 with col_c:
                     active = stock.get("active", True)
                     status = "🟢 Active" if active else "🔴 Inactive"
                     st.markdown(
-                        f'<div style="font-size:11px;color:#52525b;padding:10px 0">{status}</div>',
-                        unsafe_allow_html=True)
+                        f'<div style="font-size:11px;color:#52525b;padding:10px 0">{status}</div>')
             st.markdown("---")
 
     with cfg_tab2:
-        st.markdown('<div class="sh">Add a New Holding</div>', unsafe_allow_html=True)
+        st.html('<div class="sh">Add a New Holding</div>')
         st.caption("New holdings are saved to the stocks table and will be picked up on the next pipeline run.")
 
         from utils.supabase_client import get_service_client
@@ -788,7 +809,7 @@ with tab5:
                 placeholder="Why does BIT Capital hold this? What macro factors drive it?",
                 height=80)
 
-            submitted = st.form_submit_button("Add Holding", use_container_width=True)
+            submitted = st.form_submit_button("Add Holding", width="stretch")
             if submitted:
                 if not new_ticker or not new_name:
                     st.error("Ticker and company name are required.")
@@ -808,11 +829,11 @@ with tab5:
                         st.error(f"Failed to save: {e}")
 
         st.markdown("---")
-        st.markdown('<div class="sh">Pipeline Configuration</div>', unsafe_allow_html=True)
+        st.html('<div class="sh">Pipeline Configuration</div>')
 
         info_col1, info_col2 = st.columns(2)
         with info_col1:
-            st.markdown("""
+            st.html("""
 **Run the pipeline manually:**
 ```bash
 python pipeline/run_pipeline.py --dry-run
@@ -825,7 +846,7 @@ python scheduler.py
 ```
 """)
         with info_col2:
-            st.markdown("""
+            st.html("""
 **Pipeline stages:**
 1. `ingest.py` — fetch Polymarket markets
 2. `stage1_filter.py` — remove noise by tags
