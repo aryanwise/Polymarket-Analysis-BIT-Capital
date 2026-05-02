@@ -129,6 +129,36 @@ def run_stage1(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     stats["irrelevant_tags"] = b - len(df)
     logger.info("[4]  irrelevant_tags removed: %d | remaining: %d", stats["irrelevant_tags"], len(df))
 
+    # 5: Deduplicate by event_id — keep only highest-volume market per event
+    # Prevents 20+ Fed rate threshold variants all hitting Stage 2 as separate signals
+    b = len(df)
+
+    def _signal_quality(yes, vol):
+        uncertainty = 1 - abs(float(yes or 0.5) - 0.5) * 2
+        vol_score   = min(float(vol or 0) / 1_000_000, 1.0)
+        return uncertainty * 0.65 + vol_score * 0.35
+
+    df["_sq"] = df.apply(
+        lambda r: _signal_quality(r["_yes"], r["volume"]), axis=1
+    )
+    df = (
+        df.sort_values("_sq", ascending=False)
+          .drop_duplicates(subset=["event_id"], keep="first")
+          .drop(columns=["_sq"])
+          .reset_index(drop=True)
+    )
+    stats["deduped"] = b - len(df)
+    logger.info("[5]  dedup by event_id (signal quality) removed: %d | remaining: %d",
+                stats["deduped"], len(df))
+
+    # 6: Minimum volume floor — cut very low liquidity markets
+    # Low volume = unreliable probability signal, not worth LLM call
+    MIN_VOLUME = 5_000
+    b = len(df)
+    df = df[df["volume"] >= MIN_VOLUME]
+    stats["low_volume"] = b - len(df)
+    logger.info("[6]  low_volume (<$5k) removed: %d | remaining: %d", stats["low_volume"], len(df))
+
     # Drop helper columns
     df = df.drop(columns=["_yes", "_year", "_tags"])
 
@@ -137,17 +167,55 @@ def run_stage1(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     stats["keep_pct"]      = round(len(df) / initial * 100, 1) if initial else 0
 
     logger.info(
-        "STAGE 1 COMPLETE — kept: %d / %d (%.1f%%)",
+        "STAGE 1 COMPLETE — kept: %d / %d (%.1f%%) | deduped: %d | low_vol: %d",
         len(df), initial, stats["keep_pct"],
+        stats.get("deduped", 0), stats.get("low_volume", 0),
     )
+
     return df, stats
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    # Quick test
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(levelname)-8s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    from datetime import datetime, timezone
     from ingest import run_ingest
-    raw = run_ingest(max_events=500)
-    filtered, stats = run_stage1(raw)
-    print(stats)
-    print(filtered.head())
+
+    # Run ingest
+    print("\n--- INGEST ---")
+    df_raw = run_ingest(max_events=3000)
+    print(f"Ingest complete: {len(df_raw)} rows")
+
+    # Run stage 1
+    print("\n--- STAGE 1 ---")
+    df_filtered, stats = run_stage1(df_raw)
+    print(f"\nStats: {stats}")
+
+    # Export debug Excel
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    filename = f"debug/stage1_debug_{ts}.xlsx"
+
+    import os
+    os.makedirs("debug", exist_ok=True)
+
+    with pd.ExcelWriter(filename, engine="openpyxl") as writer:
+        # Summary sheet
+        import pandas as pd
+        summary = pd.DataFrame([
+            {"Stage": "Ingest (raw)",       "Rows": len(df_raw),      "Notes": "All active Polymarket markets"},
+            {"Stage": "Stage 1 (filtered)", "Rows": len(df_filtered), "Notes": str(stats)},
+        ])
+        summary.to_excel(writer, sheet_name="Summary", index=False)
+
+        # Raw ingest
+        df_raw.head(5000).to_excel(writer, sheet_name="01_Ingest_Raw", index=False)
+
+        # Stage 1 output
+        df_filtered.to_excel(writer, sheet_name="02_Stage1_Filtered", index=False)
+
+    print(f"\nDebug file saved: {filename}")

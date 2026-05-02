@@ -120,6 +120,61 @@ def export_debug_excel(
     return filename
 
 
+def filter_already_processed(
+    df: pd.DataFrame, supabase
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Splits stage1 output into:
+      df_new   — markets NOT yet in signals table → send to stage2 LLM
+      df_known — markets already classified → just refresh price/volume
+    """
+    if supabase is None:
+        return df, pd.DataFrame()
+
+    try:
+        res      = supabase.table("signals").select("market_id").execute()
+        known_ids = {row["market_id"] for row in (res.data or [])}
+
+        if not known_ids:
+            return df, pd.DataFrame()
+
+        df_new   = df[~df["market_id"].isin(known_ids)].copy()
+        df_known = df[ df["market_id"].isin(known_ids)].copy()
+
+        logger.info(
+            "New markets (→ LLM): %d | Known markets (→ price update only): %d",
+            len(df_new), len(df_known),
+        )
+        return df_new, df_known
+
+    except Exception as e:
+        logger.warning("Could not fetch known markets: %s — processing all", e)
+        return df, pd.DataFrame()
+
+
+def update_known_markets(df_known: pd.DataFrame, supabase) -> int:
+    """
+    For already-classified markets, update yes_price and volume only.
+    No LLM call — the classification stays the same.
+    """
+    if df_known.empty or supabase is None:
+        return 0
+
+    updated = 0
+    for _, row in df_known.iterrows():
+        try:
+            supabase.table("signals").update({
+                "yes_price": float(row.get("yes_price") or 0),
+                "volume":    float(row.get("volume")    or 0),
+            }).eq("market_id", str(row["market_id"])).execute()
+            updated += 1
+        except Exception as e:
+            logger.error("Price update failed for %s: %s", row.get("market_id"), e)
+
+    logger.info("Updated prices/volumes for %d known markets", updated)
+    return updated
+
+
 def run_pipeline(
     max_events:  int  = 3000,
     dry_run:     bool = False,
@@ -130,7 +185,7 @@ def run_pipeline(
     Returns summary dict.
     """
     run_start = datetime.now(timezone.utc)
-    run_ts    = run_start.strftime("%Y%m%d_%H%M")
+    run_ts    = run_start.strftime("%Y%m%d_%H%M%S")
 
     logger.info("=" * 60)
     logger.info("BIT CAPITAL PIPELINE START — %s", run_ts)
@@ -167,10 +222,26 @@ def run_pipeline(
         logger.error("Stage 1 returned no data. Aborting.")
         return {"status": "failed", "reason": "empty_stage1"}
 
+    # ── Step 2.5: Skip already-processed markets ──────────────
+    # New markets → LLM classification
+    # Known markets → price/volume refresh only (no LLM call)
+    df_new   = df_s1
+    n_updated = 0
+    if not dry_run and supabase:
+        logger.info("\n--- STEP 2.5: INCREMENTAL FILTER ---")
+        df_new, df_known = filter_already_processed(df_s1, supabase)
+        n_updated = update_known_markets(df_known, supabase)
+
     # ── Step 3: Stage 2 filter (Gemini) ──────────────────────
     logger.info("\n--- STEP 3: STAGE 2 FILTER (GEMINI) ---")
     from stage2_filter import run_stage2
-    df_signals, stats_s2 = run_stage2(df_s1, supabase=supabase, dry_run=dry_run)
+
+    if df_new.empty:
+        logger.info("No new markets to classify — all already processed.")
+        df_signals = pd.DataFrame()
+        stats_s2   = {"signals": 0, "noise": 0, "errors": 0, "db_writes": 0}
+    else:
+        df_signals, stats_s2 = run_stage2(df_new, supabase=supabase, dry_run=dry_run)
 
     # ── Step 4: Export debug Excel ────────────────────────────
     logger.info("\n--- STEP 4: DEBUG EXPORT ---")
@@ -203,6 +274,8 @@ def run_pipeline(
         "duration_s":      round(elapsed, 1),
         "ingest_rows":     len(df_raw),
         "stage1_rows":     len(df_s1),
+        "new_markets":     len(df_new),
+        "known_updated":   n_updated,
         "stage2_signals":  len(df_signals),
         "db_writes":       stats_s2.get("db_writes", 0),
         "report_id":       report_id,
@@ -215,6 +288,8 @@ def run_pipeline(
     logger.info("PIPELINE COMPLETE — %.1fs", elapsed)
     logger.info("  Ingest rows    : %d", summary["ingest_rows"])
     logger.info("  After Stage 1  : %d  (%.1f%% kept)", summary["stage1_rows"], stats_s1.get("keep_pct", 0))
+    logger.info("  New markets    : %d  (→ LLM)", summary["new_markets"])
+    logger.info("  Known updated  : %d  (price/vol refresh)", summary["known_updated"])
     logger.info("  Signals (S2)   : %d", summary["stage2_signals"])
     logger.info("  DB writes      : %d", summary["db_writes"])
     logger.info("  Report ID      : %s", summary["report_id"])
