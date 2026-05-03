@@ -1075,7 +1075,7 @@ with tab2:
     st.html("""
     <div style="font-size:13px;font-weight:600;color:#f0f1f5;margin-bottom:12px;
                 display:flex;align-items:center;gap:8px;">
-        <span style="color:#22d3ee;">🔎</span> Explore Any Polymarket
+        <span style="color:#22d3ee;">🔎</span> Explore Any Polymarket with 'Slug' or 'Market Text':
     </div>
     """)
     
