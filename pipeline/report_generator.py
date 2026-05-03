@@ -301,7 +301,32 @@ Include the transmission mechanism explicitly.
 
 ---
 
-## 3. Cluster Analysis
+## 3. Most Interesting Markets Right Now
+ 
+Pick exactly 3 markets from the signal data where the probability implies something
+actionable — not the highest volume, but the ones with the sharpest edge.
+ 
+Criteria for selection:
+- The probability is at a level that creates asymmetric risk/reward for a specific holding
+- There is a divergence between the Polymarket crowd and what equity consensus expects
+- The YES or NO resolution would directly change a valuation driver, not just "sentiment"
+ 
+For each market use EXACTLY this format, with each field on its own line:
+ 
+**Market:** [the exact question text]
+**Probability:** [X%] — [one sentence on what this probability implies in plain English]
+**Why interesting:** [one sentence — be specific, name the holding and the mechanism]
+**If YES:** [specific impact on named ticker — revenue %, margin bps, or break-even cross]
+**If NO:** [specific alternative scenario for the same ticker]
+**Edge:** [is Polymarket above or below equity consensus? State the gap if you see one. If no gap, say "consensus aligned — monitoring only"]
+ 
+Do not use hedging language ("could", "may", "might", "potential").
+State the direction and mechanism directly.
+Each field must be on its own line — do not run them together in a paragraph.
+
+---
+
+## 4. Cluster Analysis
 
 ### Crypto Infrastructure — IREN, HUT, COIN
 What do the signals collectively imply for this cluster?
@@ -322,7 +347,7 @@ What do current probability-weighted scenarios imply?
 
 ---
 
-## 4. Actionable Recommendations
+## 5. Actionable Recommendations
 Provide 3-5 specific, high-conviction recommendations based ONLY on the signals above.
 You MUST format this as a Markdown table with the following exact columns:
 
@@ -330,7 +355,7 @@ You MUST format this as a Markdown table with the following exact columns:
 |---|---|---|---|---|
 ---
 
-## 5. Risk Calendar
+## 6. Risk Calendar
 3 most important market expiry dates in the next 30 days.
 For each: what happens to which holding if YES vs NO?
 
