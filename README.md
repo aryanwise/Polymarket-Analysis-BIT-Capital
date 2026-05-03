@@ -1,6 +1,7 @@
 # BIT Capital — Polymarket Signal Scanner
 
 > **Live Dashboard →** [bitcapitalscreener.streamlit.app](https://bitcapitalscreener.streamlit.app/)
+
 > `Developer - Aryan Mishra`
 
 A real-time equity intelligence platform that scans [Polymarket](https://polymarket.com) prediction markets and uses LLMs to surface actionable signals for a concentrated tech portfolio. Built for BIT Capital, a Berlin-based technology fund (~€500M AUM).
