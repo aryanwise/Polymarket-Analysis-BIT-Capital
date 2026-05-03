@@ -682,7 +682,7 @@ CLUSTER_COLORS = {
     "Semiconductors": "#a78bfa",
     "Cloud / AI Platforms": "#22d3ee",
     "Fintech / Insurtech": "#34d399",
-    "Other": "#6b7280",
+    "Other": "#f0f1f5",
 }
 
 def fmt_vol(v):
@@ -793,19 +793,19 @@ with st.sidebar:
     <div style="display:grid;gap:12px;margin-bottom:20px;">
         <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                     border-radius:10px;padding:16px;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6b7280;
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#f0f1f5;
                         text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Active Signals</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:600;color:#f0f1f5;">{stats["signals"]}</div>
         </div>
         <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                     border-radius:10px;padding:16px;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6b7280;
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#f0f1f5;
                         text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Reports</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:600;color:#f0f1f5;">{stats["reports"]}</div>
         </div>
         <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                     border-radius:10px;padding:16px;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6b7280;
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#f0f1f5;
                         text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Holdings</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:600;color:#f0f1f5;">{stats["stocks"]}</div>
         </div>
@@ -829,7 +829,7 @@ with st.sidebar:
     st.markdown("---")
     st.html("""
     <div style="font-size:11px;color:#4b5563;line-height:1.6;">
-        <div style="font-weight:600;color:#6b7280;margin-bottom:6px;">Quick Actions</div>
+        <div style="font-weight:600;color:#f0f1f5;margin-bottom:6px;">Quick Actions</div>
         <div style="display:flex;flex-direction:column;gap:4px;">
             <a href="#" style="color:#4b5563;text-decoration:none;padding:4px 0;transition:color 0.15s;" 
                onmouseover="this.style.color='#22d3ee'" onmouseout="this.style.color='#4b5563'">→ Run Pipeline</a>
@@ -872,7 +872,7 @@ with tab1:
         st.html(f"""
         <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                     border-radius:10px;padding:20px;text-align:center;transition:all 0.2s;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6b7280;
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#f0f1f5;
                         text-transform:uppercase;letter-spacing:0.12em;margin-bottom:10px;">Total Signals</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;
                         color:#f0f1f5;letter-spacing:-0.02em;">{stats["signals"]}</div>
@@ -886,11 +886,11 @@ with tab1:
         st.html(f"""
         <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                     border-radius:10px;padding:20px;text-align:center;transition:all 0.2s;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6b7280;
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#f0f1f5;
                         text-transform:uppercase;letter-spacing:0.12em;margin-bottom:10px;">Reports</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;
                         color:#f0f1f5;letter-spacing:-0.02em;">{stats["reports"]}</div>
-            <div style="margin-top:8px;font-size:11px;color:#9ca3af;font-family:'JetBrains Mono',monospace;">
+            <div style="margin-top:8px;font-size:11px;color:#f0f1f5;font-family:'JetBrains Mono',monospace;">
                 Generated
             </div>
         </div>
@@ -899,11 +899,11 @@ with tab1:
         st.html(f"""
         <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                     border-radius:10px;padding:20px;text-align:center;transition:all 0.2s;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6b7280;
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#f0f1f5;
                         text-transform:uppercase;letter-spacing:0.12em;margin-bottom:10px;">Holdings</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;
                         color:#f0f1f5;letter-spacing:-0.02em;">{stats["stocks"]}</div>
-            <div style="margin-top:8px;font-size:11px;color:#9ca3af;font-family:'JetBrains Mono',monospace;">
+            <div style="margin-top:8px;font-size:11px;color:#f0f1f5;font-family:'JetBrains Mono',monospace;">
                 Tracked
             </div>
         </div>
@@ -913,7 +913,7 @@ with tab1:
         st.html(f"""
         <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                     border-radius:10px;padding:20px;text-align:center;transition:all 0.2s;">
-            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6b7280;
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#f0f1f5;
                         text-transform:uppercase;letter-spacing:0.12em;margin-bottom:10px;">Last Run</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:600;
                         color:#f0f1f5;letter-spacing:-0.02em;">{now_time}</div>
@@ -961,7 +961,7 @@ with tab1:
             avg_yes = data["yes_sum"] / count if count else 0
             bull = data["bull_count"]
             bear = data["bear_count"]
-            cluster_color = CLUSTER_COLORS.get(cluster, "#6b7280")
+            cluster_color = CLUSTER_COLORS.get(cluster, "#f0f1f5")
             
             if avg_yes >= 0.65:
                 prob_lbl = "HIGH CONVICTION"; prob_col = "#f59e0b"
@@ -973,10 +973,10 @@ with tab1:
             with cols[i]:
                 st.html(f"""
                 <div class="card" style="text-align:center; border-top: 2px solid {cluster_color};">
-                    <div style="font-size:12px;color:#9ca3af;margin-bottom:8px;font-weight:500;letter-spacing:0.02em;">{cluster}</div>
+                    <div style="font-size:12px;color:#f0f1f5;margin-bottom:8px;font-weight:500;letter-spacing:0.02em;">{cluster}</div>
                     <div style="font-family:'JetBrains Mono',monospace;font-size:32px;
                                 font-weight:600;color:#f0f1f5;letter-spacing:-0.02em;">{count}</div>
-                    <div style="font-size:11px;color:#6b7280;margin:4px 0 12px;">unique markets</div>
+                    <div style="font-size:11px;color:#f0f1f5;margin:4px 0 12px;">unique markets</div>
                     <div style="display:flex;justify-content:center;gap:12px;margin-bottom:10px;">
                         <span style="font-size:11px;color:#34d399;font-family:'JetBrains Mono',monospace;">▲ {bull}</span>
                         <span style="font-size:11px;color:#fb7185;font-family:'JetBrains Mono',monospace;">▼ {bear}</span>
@@ -1041,18 +1041,18 @@ with tab1:
                 <div style="margin:8px 0">{chips}</div>
                 <div class="card-meta">
                     <span style="display:flex;align-items:center;gap:6px;">
-                        <span style="color:#6b7280">YES</span>
+                        <span style="color:#f0f1f5">YES</span>
                         <b style="color:{yes_col};font-size:12px;">{fmt_prob(yes)}</b>
                     </span>
                     <span style="color:#4b5563">|</span>
                     <span style="display:flex;align-items:center;gap:6px;">
-                        <span style="color:#6b7280">Vol</span>
-                        <span style="color:#9ca3af;">{fmt_vol(vol)}</span>
+                        <span style="color:#f0f1f5">Vol</span>
+                        <span style="color:#f0f1f5;">{fmt_vol(vol)}</span>
                     </span>
                     <span style="color:#4b5563">|</span>
                     <span style="display:flex;align-items:center;gap:6px;">
-                        <span style="color:#6b7280">Exp</span>
-                        <span style="color:#9ca3af;">{end}</span>
+                        <span style="color:#f0f1f5">Exp</span>
+                        <span style="color:#f0f1f5;">{end}</span>
                     </span>
                 </div>
                 {strength}
@@ -1067,14 +1067,6 @@ with tab2:
 
 
     # ── Manual Market Explorer (flat — no wrapper divs) ──
-    st.html("""
-    <div style="font-size:13px;font-weight:600;color:#f0f1f5;margin-bottom:12px;
-                display:flex;align-items:center;gap:8px;">
-        <span style="color:#22d3ee;">🔎</span> Explore Any Polymarket
-    </div>
-    """)
-    
-    # ── Manual Market Explorer (flat — no wrapper container) ──
     st.html("""
     <div style="font-size:13px;font-weight:600;color:#f0f1f5;margin-bottom:12px;
                 display:flex;align-items:center;gap:8px;">
@@ -1220,13 +1212,13 @@ with tab2:
                 <div style="margin:8px 0">{chips}</div>
                 <div class="card-meta">
                     <span style="display:flex;align-items:center;gap:6px;">
-                        <span style="color:#6b7280">Vol</span>
-                        <span style="color:#9ca3af;">{fmt_vol(vol)}</span>
+                        <span style="color:#f0f1f5">Vol</span>
+                        <span style="color:#f0f1f5;">{fmt_vol(vol)}</span>
                     </span>
                     <span style="color:#4b5563">|</span>
                     <span style="display:flex;align-items:center;gap:6px;">
-                        <span style="color:#6b7280">Exp</span>
-                        <span style="color:#9ca3af;">{end}</span>
+                        <span style="color:#f0f1f5">Exp</span>
+                        <span style="color:#f0f1f5;">{end}</span>
                     </span>
                 </div>
                 {strength}
@@ -1254,7 +1246,7 @@ with tab2:
                 result = st.session_state.get(f"dd_result_{sig_id}")
                 if result and "error" not in result:
                     direction  = result.get("direction","Neutral")
-                    d_color    = "#34d399" if direction=="Bullish" else "#fb7185" if direction=="Bearish" else "#6b7280"
+                    d_color    = "#34d399" if direction=="Bullish" else "#fb7185" if direction=="Bearish" else "#f0f1f5"
                     cached     = result.get("from_cache", False)
                     analysis   = result.get("analysis_text","")
                     sources    = result.get("source_urls") or []
@@ -1333,7 +1325,7 @@ with tab3:
 
         with rc1:
             st.html("""
-            <div style="font-size:11px;font-weight:600;color:#6b7280;letter-spacing:0.1em;
+            <div style="font-size:11px;font-weight:600;color:#f0f1f5;letter-spacing:0.1em;
                         text-transform:uppercase;margin-bottom:12px;">Report History</div>
             """)
             
@@ -1351,21 +1343,21 @@ with tab3:
             <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                         border-radius:10px;padding:16px;">
                 <div style="font-family:'JetBrains Mono',monospace;font-size:10px;
-                            letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;
+                            letter-spacing:0.1em;text-transform:uppercase;color:#f0f1f5;
                             margin-bottom:12px;">Metadata</div>
                 <div style="display:grid;gap:10px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:11px;color:#6b7280;">Signals</span>
+                        <span style="font-size:11px;color:#f0f1f5;">Signals</span>
                         <span style="font-family:'JetBrains Mono',monospace;font-size:12px;
                                      color:#22d3ee;font-weight:600;">{selected.get('signal_count',0)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:11px;color:#6b7280;">Model</span>
+                        <span style="font-size:11px;color:#f0f1f5;">Model</span>
                         <span style="font-family:'JetBrains Mono',monospace;font-size:11px;
                                      color:#f0f1f5;">{selected.get('model_used','—')}</span>
                     </div>
                     <div style="padding-top:10px;margin-top:4px;border-top:1px solid rgba(255,255,255,0.06);">
-                        <div style="font-size:10px;color:#6b7280;margin-bottom:8px;text-transform:uppercase;
+                        <div style="font-size:10px;color:#f0f1f5;margin-bottom:8px;text-transform:uppercase;
                                     letter-spacing:0.06em;">Tickers</div>
                         <div style="display:flex;flex-wrap:wrap;gap:4px;">
                             {"".join(f'<span class="chip">{t}</span>' for t in tickers)}
@@ -1390,7 +1382,7 @@ with tab3:
             <div style="display:flex;align-items:center;justify-content:space-between;
                         margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.06);">
                 <div>
-                    <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:#6b7280;
+                    <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:#f0f1f5;
                                 text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">
                         BIT Report · {gen_time}
                     </div>
@@ -1456,7 +1448,7 @@ with tab4:
                 sent_bg = "rgba(251,113,133,0.08)"
                 sent_lbl = f"▼ {bear}B"
             else:             
-                sent_color = "#6b7280"
+                sent_color = "#f0f1f5"
                 sent_bg = "rgba(107,114,128,0.08)"
                 sent_lbl = f"— {n_sig}"
 
@@ -1464,7 +1456,7 @@ with tab4:
             chg_str   = f"{'▲' if chg>=0 else '▼'} {abs(chg):.2f}%"
             px_str    = f"${px:,.2f}" if px else "—"
             cluster = CLUSTER_MAP.get(t, "")
-            cluster_dot = CLUSTER_COLORS.get(cluster, "#6b7280")
+            cluster_dot = CLUSTER_COLORS.get(cluster, "#f0f1f5")
 
             with cols[i]:
                 st.html(f"""
@@ -1482,7 +1474,7 @@ with tab4:
                                 font-family:'JetBrains Mono',monospace;font-weight:600;">
                         {sent_lbl}
                     </div>
-                    <div style="font-size:10px;color:#4b5563;margin-top:6px;font-weight:500;">
+                    <div style="font-size:10px;color:#f0f1f5;margin-top:6px;font-weight:500;">
                         {stock.get('sector','')}
                     </div>
                 </div>""")
@@ -1539,7 +1531,7 @@ with tab5:
             by_cluster.setdefault(c, []).append(s)
 
         for cluster, cluster_stocks in by_cluster.items():
-            cluster_color = CLUSTER_COLORS.get(cluster, "#6b7280")
+            cluster_color = CLUSTER_COLORS.get(cluster, "#f0f1f5")
             st.html(f"""
             <div style="display:flex;align-items:center;gap:10px;margin:20px 0 12px;">
                 <div style="width:8px;height:8px;background:{cluster_color};border-radius:2px;"></div>
@@ -1559,7 +1551,7 @@ with tab5:
                         f'{_html.escape(stock.get("company_name",""))}'
                         f'<span style="color:#4b5563;font-weight:400;margin-left:8px;">· {_html.escape(stock.get("sector",""))}</span>'
                         f'</div>'
-                        f'<div style="font-size:12px;color:#6b7280;line-height:1.5;">{_html.escape(stock.get("thesis",""))}</div>'
+                        f'<div style="font-size:12px;color:#f0f1f5;line-height:1.5;">{_html.escape(stock.get("thesis",""))}</div>'
                     )
                 with col_c:
                     active = stock.get("active", True)
