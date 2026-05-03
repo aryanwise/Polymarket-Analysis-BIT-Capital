@@ -81,7 +81,7 @@ def run_once(dry_run: bool = False) -> dict:
     result = {"status": "error", "run_ts": run_ts.isoformat()}
 
     try:
-        from pipeline import run_pipeline
+        from pipeline.run_pipeline import run_pipeline
 
         result = run_pipeline(
             max_events=args.max_events,
