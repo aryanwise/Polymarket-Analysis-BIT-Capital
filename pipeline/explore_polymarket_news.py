@@ -15,6 +15,7 @@ load_dotenv()
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 
 if not TAVILY_API_KEY:
     raise ValueError("TAVILY_API_KEY not found in .env")
@@ -22,7 +23,20 @@ if not TAVILY_API_KEY:
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env")
 
+# ── Gemini client (fallback) ──
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+# ── Mistral client (primary) ──
+mistral_client = None
+if MISTRAL_API_KEY:
+    try:
+        from mistralai.client import Mistral
+        mistral_client = Mistral(api_key=MISTRAL_API_KEY)
+    except ImportError:
+        print("[WARN] mistralai SDK not installed. Run: pip install mistralai")
+else:
+    print("[WARN] MISTRAL_API_KEY not found. Using Gemini only.")
+
 
 # ==============================
 # HOLDINGS CONTEXT
@@ -129,7 +143,7 @@ def fetch_news(query_input, max_results=5):
 
 
 # ==============================
-# GEMINI PROMPT
+# PROMPT BUILDER (shared)
 # ==============================
 def build_gemini_prompt(event, news):
     markets_text = "\n".join([
@@ -147,8 +161,7 @@ def build_gemini_prompt(event, news):
         for k, v in raw_holdings.items()
     ])
 
-    return f"""
-You are a portfolio analyst at BIT Capital.
+    return f"""You are a portfolio analyst at BIT Capital.
 
 MARKET:
 {event.get("title")}
@@ -201,9 +214,36 @@ Give one clear takeaway (no Bullish/Bearish labels).
 
 
 # ==============================
-# GEMINI CALL
+# MISTRAL (PRIMARY)
+# ==============================
+def run_mistral_analysis(event, news):
+    """
+    Primary analysis via Mistral AI.
+    Falls back to Gemini if Mistral is unavailable.
+    """
+    if not mistral_client:
+        raise RuntimeError("Mistral client not initialized")
+
+    prompt = build_gemini_prompt(event, news)
+
+    response = mistral_client.chat.complete(
+        model="mistral-large-latest",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+        max_tokens=600
+    )
+
+    return response.choices[0].message.content
+
+
+# ==============================
+# GEMINI (FALLBACK)
 # ==============================
 def run_gemini_analysis(event, news):
+    """
+    Fallback analysis via Gemini.
+    Kept for backward compatibility.
+    """
     prompt = build_gemini_prompt(event, news)
 
     response = client.models.generate_content(
@@ -216,6 +256,24 @@ def run_gemini_analysis(event, news):
     )
 
     return response.text
+
+
+# ==============================
+# UNIFIED ENTRYPOINT (Mistral → Gemini fallback)
+# ==============================
+def run_analysis(event, news):
+    """
+    Run analysis with Mistral as primary.
+    Automatically falls back to Gemini on any failure.
+    """
+    if mistral_client:
+        try:
+            return run_mistral_analysis(event, news)
+        except Exception as e:
+            print(f"[WARN] Mistral failed ({e}). Falling back to Gemini...")
+            return run_gemini_analysis(event, news)
+    else:
+        return run_gemini_analysis(event, news)
 
 
 # ==============================
@@ -320,7 +378,7 @@ if __name__ == "__main__":
 
     event = fetch_event_from_text(user_input)
     news = fetch_news(user_input)
-    analysis = run_gemini_analysis(event, news)
+    analysis = run_analysis(event, news)   # ← uses Mistral → Gemini fallback
     impacts = extract_portfolio_impacts(analysis)
 
     format_output(event, analysis, impacts)
