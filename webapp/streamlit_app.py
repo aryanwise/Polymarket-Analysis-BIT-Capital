@@ -661,6 +661,10 @@ hr {
     border-radius: 2px;
     transition: width 0.6s ease;
 }
+/* ── Market monitor transitions ── */
+@keyframes barGrow {
+    from { width: 0%; }
+}
 </style>
 """)
 
@@ -1402,115 +1406,141 @@ with tab3:
             st.markdown(content)
 
 # ════════════════════════════════════════════════════════════
-# TAB 4 — HOLDINGS
+# TAB 4 — HOLDINGS (Bloomberg-style Market Monitor)
 # ════════════════════════════════════════════════════════════
 with tab4:
     st.html('<div class="sh">BIT Capital Holdings</div>')
 
     stocks  = load_stocks()
     signals = load_signals(limit=200)
-    tickers = [s["ticker"] for s in stocks]
-
+    
+    # Fetch live prices
     with st.spinner("Fetching live prices..."):
-        prices = fetch_live_prices(tickers)
-
+        prices = fetch_live_prices([s["ticker"] for s in stocks])
+    
+    # Signal counts per ticker
     sig_counts = {}
-    sig_sents  = {}
     for s in signals:
         t = s.get("ticker","")
         sig_counts[t] = sig_counts.get(t, 0) + 1
-        sents = sig_sents.setdefault(t, {"Bullish":0,"Bearish":0,"Neutral":0})
-        sents[s.get("sentiment","Neutral")] = sents.get(s.get("sentiment","Neutral"),0) + 1
 
-    # Grid — 4 per row with improved visual design
-    per_row = 4
-    rows    = [stocks[i:i+per_row] for i in range(0, len(stocks), per_row)]
+    # Build monitor rows
+    monitor_rows = []
+    for stock in stocks:
+        t    = stock["ticker"]
+        p    = prices.get(t, {})
+        px   = p.get("price", 0)
+        chg  = p.get("chg", 0)
+        n_sig = sig_counts.get(t, 0)
+        cluster = CLUSTER_MAP.get(t, "Other")
+        cluster_color = CLUSTER_COLORS.get(cluster, "#6b7280")
+        
+        monitor_rows.append({
+            "ticker": t,
+            "company": stock.get("company_name", ""),
+            "cluster": cluster,
+            "cluster_color": cluster_color,
+            "price": px,
+            "chg": chg,
+            "signals": n_sig,
+            "sector": stock.get("sector", ""),
+        })
 
-    for row in rows:
-        cols = st.columns(per_row)
-        for i, stock in enumerate(row):
-            t    = stock["ticker"]
-            p    = prices.get(t, {})
-            px   = p.get("price", 0)
-            chg  = p.get("chg", 0)
-            live = bool(px)
+    # Sort by cluster then ticker
+    monitor_rows.sort(key=lambda x: (x["cluster"], x["ticker"]))
 
-            sents = sig_sents.get(t, {})
-            n_sig = sig_counts.get(t, 0)
-            bull  = sents.get("Bullish", 0)
-            bear  = sents.get("Bearish", 0)
+    # ── Cluster grouping with monitor table ──
+    current_cluster = None
+    for row in monitor_rows:
+        # Cluster header
+        if row["cluster"] != current_cluster:
+            current_cluster = row["cluster"]
+            st.html(f"""
+            <div style="display:flex;align-items:center;gap:10px;margin:24px 0 12px;">
+                <div style="width:6px;height:6px;background:{row['cluster_color']};border-radius:50%;
+                            box-shadow:0 0 8px {row['cluster_color']}40;"></div>
+                <div style="font-size:11px;font-weight:600;color:#6e7a94;letter-spacing:0.12em;
+                            text-transform:uppercase;">{row['cluster']}</div>
+                <div style="height:1px;flex:1;background:linear-gradient(90deg,{row['cluster_color']}20,transparent);"></div>
+            </div>
+            """)
+
+        # Ticker row with inline bar
+        t = row["ticker"]
+        px = row["price"]
+        chg = row["chg"]
+        n_sig = row["signals"]
+        
+        px_str = f"${px:,.2f}" if px else "—"
+        chg_str = f"{chg:+.2f}%" if px else "—"
+        chg_color = "#34d399" if chg >= 0 else "#f87171"
+        chg_bg = "rgba(52,211,153,0.12)" if chg >= 0 else "rgba(248,113,113,0.12)"
+        
+        # Bar width proportional to magnitude (capped at 100%)
+        bar_width = min(abs(chg) * 8, 100) if px else 0
+        bar_color = "rgba(52,211,153,0.25)" if chg >= 0 else "rgba(248,113,113,0.25)"
+        
+        # Signal dot
+        sig_dot = f'<span style="display:inline-block;width:5px;height:5px;background:{row["cluster_color"]};' \
+                  f'border-radius:50%;margin-right:6px;box-shadow:0 0 4px {row["cluster_color"]}60;"></span>' if n_sig > 0 else \
+                  '<span style="display:inline-block;width:5px;height:5px;background:#3e4558;border-radius:50%;margin-right:6px;"></span>'
+
+        st.html(f"""
+        <div style="display:flex;align-items:center;padding:8px 12px;margin:2px 0;
+                    background:{'rgba(255,255,255,0.015)' if px else 'transparent'};
+                    border-radius:6px;transition:background 0.15s;"
+             onmouseover="this.style.background='rgba(255,255,255,0.04)'" 
+             onmouseout="this.style.background='{'rgba(255,255,255,0.015)' if px else 'transparent'}'">
             
-            if bull > bear:   
-                sent_color = "#34d399"
-                sent_bg = "rgba(52,211,153,0.08)"
-                sent_lbl = f"▲ {bull}B"
-            elif bear > bull: 
-                sent_color = "#fb7185"
-                sent_bg = "rgba(251,113,133,0.08)"
-                sent_lbl = f"▼ {bear}B"
-            else:             
-                sent_color = "#f0f1f5"
-                sent_bg = "rgba(107,114,128,0.08)"
-                sent_lbl = f"— {n_sig}"
-
-            chg_class = "px-up" if chg >= 0 else "px-dn"
-            chg_str   = f"{'▲' if chg>=0 else '▼'} {abs(chg):.2f}%"
-            px_str    = f"${px:,.2f}" if px else "—"
-            cluster = CLUSTER_MAP.get(t, "")
-            cluster_dot = CLUSTER_COLORS.get(cluster, "#f0f1f5")
-
-            with cols[i]:
-                st.html(f"""
-                <div class="px-card">
-                    <div style="position:absolute;top:12px;right:12px;width:6px;height:6px;
-                                background:{cluster_dot};border-radius:50%;
-                                box-shadow:0 0 6px {cluster_dot}40;"></div>
-                    <div class="px-tkr">{t}</div>
-                    <div class="px-co">{stock.get('company_name','')}</div>
-                    <div class="px-val">{px_str}</div>
-                    <div class="{chg_class}">{chg_str}</div>
-                    <div style="margin-top:10px;display:inline-block;padding:3px 10px;
-                                background:{sent_bg};border-radius:20px;
-                                font-size:10px;color:{sent_color};
-                                font-family:'JetBrains Mono',monospace;font-weight:600;">
-                        {sent_lbl}
-                    </div>
-                    <div style="font-size:10px;color:#f0f1f5;margin-top:6px;font-weight:500;">
-                        {stock.get('sector','')}
-                    </div>
-                </div>""")
+            <!-- Ticker -->
+            <div style="width:70px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;
+                        color:#f0f1f5;">{sig_dot}{t}</div>
+            
+            <!-- Company (hidden on narrow) -->
+            <div style="flex:1;min-width:120px;font-size:12px;color:#7a8399;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+                        padding-right:16px;">{row['company']}</div>
+            
+            <!-- Price -->
+            <div style="width:90px;text-align:right;font-family:'JetBrains Mono',monospace;
+                        font-size:13px;font-weight:600;color:#f0f1f5;">{px_str}</div>
+            
+            <!-- Change bar + value -->
+            <div style="width:160px;display:flex;align-items:center;gap:8px;margin-left:16px;">
+                <div style="flex:1;height:18px;background:#1a1d28;border-radius:3px;overflow:hidden;position:relative;">
+                    <div style="position:absolute;{'right' if chg >= 0 else 'left'}:0;top:0;bottom:0;
+                                width:{bar_width}%;background:{bar_color};border-radius:3px;
+                                transition:width 0.6s ease;"></div>
+                </div>
+                <div style="width:65px;text-align:right;font-family:'JetBrains Mono',monospace;
+                            font-size:11px;font-weight:600;color:{chg_color};">{chg_str}</div>
+            </div>
+            
+            <!-- Signal count -->
+            <div style="width:50px;text-align:right;font-family:'JetBrains Mono',monospace;
+                        font-size:10px;color:#6e7a94;">{n_sig} sig</div>
+        </div>
+        """)
 
     st.html("<div style='height:16px'></div>")
 
-    # Signal Coverage Table — redesigned
-    st.html('<div class="sh">Signal Coverage by Holding</div>')
-    coverage_rows = []
-    for stock in stocks:
-        t   = stock["ticker"]
-        n   = sig_counts.get(t, 0)
-        px  = prices.get(t, {}).get("price", 0)
-        chg = prices.get(t, {}).get("chg", 0)
-        coverage_rows.append({
-            "Ticker":  t,
-            "Company": stock.get("company_name",""),
-            "Cluster": CLUSTER_MAP.get(t,""),
-            "Price":   f"${px:,.2f}" if px else "—",
-            "1D Chg":  f"{'▲' if chg>=0 else '▼'} {abs(chg):.2f}%",
-            "Signals": n,
-            "Thesis":  stock.get("thesis",""),
-        })
-
-    st.dataframe(
-        pd.DataFrame(coverage_rows),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Thesis":  st.column_config.TextColumn(width="large"),
-            "Signals": st.column_config.NumberColumn(format="%d"),
-            "Ticker":  st.column_config.TextColumn(width="small"),
-            "1D Chg":  st.column_config.TextColumn(width="small"),
-        }
-    )
+    # ── Compact summary table (optional, for export) ──
+    with st.expander("📊 Raw Data View", expanded=False):
+        coverage_rows = []
+        for row in monitor_rows:
+            coverage_rows.append({
+                "Ticker":  row["ticker"],
+                "Company": row["company"],
+                "Cluster": row["cluster"],
+                "Price":   f"${row['price']:,.2f}" if row["price"] else "—",
+                "1D Chg":  f"{'▲' if row['chg']>=0 else '▼'} {abs(row['chg']):.2f}%",
+                "Signals": row["signals"],
+            })
+        st.dataframe(
+            pd.DataFrame(coverage_rows),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 # ════════════════════════════════════════════════════════════
