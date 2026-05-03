@@ -206,7 +206,7 @@ def run_pipeline(
 
     # ── Step 1: Ingest ────────────────────────────────────────
     logger.info("\n--- STEP 1: INGEST ---")
-    from ingest import run_ingest
+    from pipeline.extract import run_ingest
     df_raw = run_ingest(max_events=max_events)
 
     if df_raw.empty:
