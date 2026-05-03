@@ -5,7 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "apscheduler>=3.11.2",
     "duckduckgo-search>=8.1.1",
     "google-genai>=1.73.1",
     "groq>=1.2.0",
