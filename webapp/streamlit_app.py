@@ -970,23 +970,24 @@ with tab1:
             else:
                 prob_lbl = "TAIL RISK"; prob_col = "#a78bfa"
                 
+            # Calculate total volume for cluster
+            total_vol = sum(float(s.get("volume") or 0) for s in signals 
+                          if CLUSTER_MAP.get(s.get("ticker",""), "Other") == cluster)
+            
             with cols[i]:
                 st.html(f"""
                 <div class="card" style="text-align:center; border-top: 2px solid {cluster_color};">
                     <div style="font-size:12px;color:#f0f1f5;margin-bottom:8px;font-weight:500;letter-spacing:0.02em;">{cluster}</div>
                     <div style="font-family:'JetBrains Mono',monospace;font-size:32px;
                                 font-weight:600;color:#f0f1f5;letter-spacing:-0.02em;">{count}</div>
-                    <div style="font-size:11px;color:#f0f1f5;margin:4px 0 12px;">unique markets</div>
-                    <div style="display:flex;justify-content:center;gap:12px;margin-bottom:10px;">
-                        <span style="font-size:11px;color:#34d399;font-family:'JetBrains Mono',monospace;">▲ {bull}</span>
-                        <span style="font-size:11px;color:#fb7185;font-family:'JetBrains Mono',monospace;">▼ {bear}</span>
-                    </div>
+                    <div style="font-size:11px;color:#f0f1f5;margin:4px 0 8px;">unique markets</div>
+                    <div style="font-size:12px;color:#9aa3b8;font-family:'JetBrains Mono',monospace;
+                                margin-bottom:10px;">{fmt_vol(total_vol)} vol</div>
                     <div style="font-size:10px;color:{prob_col};font-family:'JetBrains Mono',monospace;
                                 background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:4px;display:inline-block;">
                         avg YES {avg_yes:.0%} · {prob_lbl}
                     </div>
                 </div>""")
-
         st.html("<div style='height:16px'></div>")
 
         # Top signals — deduplicated by market, all tickers grouped
@@ -1074,7 +1075,7 @@ with tab2:
     </div>
     """)
     
-    col1, col2 = st.columns([4, 1])
+    col1, col2 = st.columns([5, 1])
     with col1:
         user_market = st.text_input(
             "Enter market (name or slug)",
@@ -1227,9 +1228,9 @@ with tab2:
             # Dig Deeper button — form-based to prevent stretch
             if sig_id:
                 with st.form(key=f"dd_form_{sig_id}", border=False):
-                    col_btn, _ = st.columns([1, 5])
+                    col_btn, _ = st.columns([5, 1])
                     with col_btn:
-                        submitted = st.form_submit_button("🔍 Analyse")
+                        submitted = st.form_submit_button("🔍 Compare Against News Sources...")
                         
                 if submitted:
                     st.session_state[f"dd_open_{sig_id}"] = True
