@@ -1,5 +1,5 @@
 """
-pipeline/ingest.py
+pipeline/extract.py
 
 Extracts Polymarket events + markets from the Gamma API.
 Returns a DataFrame — does NOT write to Supabase (ETL: filter first, then load).

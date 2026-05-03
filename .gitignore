@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# Python virtual env
+.venv/
+.python-version
+
+# Cache / system
+__pycache__/
+*.pyc
+
+# Debug exports (ADD THIS)
+debug/
+*.xlsx
+
+# OS
+.DS_Store
