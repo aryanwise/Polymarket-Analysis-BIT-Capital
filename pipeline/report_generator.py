@@ -50,36 +50,37 @@ GROQ_MODEL   = "llama-3.3-70b-versatile"
 FUND_BRIEF = """
 BIT Capital — Berlin-based technology fund, ~€500M AUM.
 Concentrated, high-conviction tech portfolio. Every holding has a thesis.
+Mandate: 12-to-18 month holding period. We actively hedge tail risks.
 
-CLUSTER 1 — CRYPTO INFRASTRUCTURE
-  IREN  (IREN Limited):  Bitcoin miner pivoting to AI data centers.
-                         Revenue = hashrate × BTC price. Break-even BTC ~$45-50k.
-  HUT   (Hut 8 Corp.):  Diversified miner + AI compute. Less BTC-pure than IREN.
-  COIN  (Coinbase):      Crypto exchange. Revenue = volumes × fee rate.
-                         Regulatory risk is existential.
+CLUSTER 1 — CRYPTO INFRASTRUCTURE (25% of Fund)
+  IREN  (8% weight):  Bitcoin miner pivoting to AI data centers.
+                      Revenue = hashrate × BTC price. Break-even BTC ~$45-50k.
+  COIN  (12% weight): Crypto exchange. Revenue = volumes × fee rate.
+                      Regulatory risk is existential.
+  HUT   (5% weight):  Diversified miner + AI compute. Less BTC-pure than IREN.
 
-CLUSTER 2 — SEMICONDUCTORS
-  NVDA  (NVIDIA):   AI chips. ~20% revenue from China (H20). Export control risk.
-  TSM   (TSMC):     Foundry for all AI chips. Taiwan = existential operational risk.
-  MU    (Micron):   HBM memory for AI. Export control + Taiwan risk.
+CLUSTER 2 — SEMICONDUCTORS (35% of Fund)
+  NVDA  (15% weight): AI chips. ~20% revenue from China (H20). Export control risk.
+  TSM   (12% weight): Foundry for all AI chips. Taiwan = existential operational risk.
+  MU    (8% weight):  HBM memory for AI. Export control + Taiwan risk.
 
-CLUSTER 3 — CLOUD / AI PLATFORMS
-  MSFT  (Microsoft):  Azure + OpenAI commercial deal. Antitrust risk (DOJ).
-  GOOGL (Alphabet):   Search + Gemini AI. Antitrust ongoing.
-  AMZN  (Amazon):     AWS + Bedrock. Tariff risk on hardware.
-  META  (Meta):       Llama AI. Ad revenue = macro consumer proxy.
-  DDOG  (Datadog):    Cloud monitoring. Leading indicator of enterprise AI spend.
+CLUSTER 3 — CLOUD / AI PLATFORMS (30% of Fund)
+  MSFT  (12% weight): Azure + OpenAI commercial deal. Antitrust risk (DOJ).
+  GOOGL (8% weight):  Search + Gemini AI. Antitrust ongoing.
+  META  (5% weight):  Llama AI. Ad revenue = macro consumer proxy.
+  AMZN  (3% weight):  AWS + Bedrock. Tariff risk on hardware.
+  DDOG  (2% weight):  Cloud monitoring. Leading indicator of enterprise AI spend.
 
-CLUSTER 4 — FINTECH / INSURTECH
-  HOOD  (Robinhood):   Interest income + crypto revenue. Rate-sensitive.
-  LMND  (Lemonade):    Insurance float in bonds. Rate cuts compress income.
-  RDDT  (Reddit):      AI data licensing + ads. AI regulation sensitivity.
+CLUSTER 4 — FINTECH / INSURTECH (10% of Fund)
+  HOOD  (5% weight):  Interest income + crypto revenue. Rate-sensitive.
+  RDDT  (3% weight):  AI data licensing + ads. AI regulation sensitivity.
+  LMND  (2% weight):  Insurance float in bonds. Rate cuts compress income.
 
 PORTFOLIO RISKS (priority order):
-1. Bitcoin price — IREN near break-even at $45k BTC
-2. Fed rate path — affects IREN, HUT, LMND, HOOD directly
-3. Taiwan/China military — existential for TSM, supply shock for NVDA/MU
-4. US chip export controls — ~20% NVDA China revenue at risk
+1. Taiwan/China military — existential for TSM (12%), supply shock for NVDA/MU
+2. Bitcoin price — IREN near break-even at $45k BTC
+3. US chip export controls — ~20% NVDA China revenue at risk
+4. Fed rate path — affects our Fintech cluster directly
 5. AI capex slowdown — DDOG is the canary in the coalmine
 6. Crypto regulation — COIN business model risk
 """
@@ -231,6 +232,12 @@ Your style:
 - Quantify where possible: % revenue at risk, basis points of margin, break-even levels.
 - Make a call. Acknowledge uncertainty but state your view.
 
+CRITICAL SYNTHESIS REQUIREMENT:
+- Look for CONTRADICTORY or COMPOUNDING signals across different markets.
+- Cross-Cluster Impact: If Market A implies higher energy costs (bad for IREN) but Market B implies lower rates (good for IREN borrowing), synthesize the net effect. 
+- The Canary Effect: If signals imply a slowdown in enterprise cloud spending (DDOG), explicitly connect that to the revenue expectations for the AI Platforms (MSFT, GOOGL).
+- Do not analyze signals in isolation. Connect the dots between macro policy, infrastructure costs, and tech fundamentals across the entire portfolio.
+
 This is NOT:
 - A list of signals.
 - A "things to watch" memo.
@@ -316,11 +323,11 @@ What do current probability-weighted scenarios imply?
 ---
 
 ## 4. Actionable Recommendations
-3-5 specific recommendations. Each must reference a probability and transmission mechanism.
+Provide 3-5 specific, high-conviction recommendations based ONLY on the signals above.
+You MUST format this as a Markdown table with the following exact columns:
 
-Format:
-**[BUY/SELL/HOLD/ADD/REDUCE/HEDGE] [TICKER]** — one sentence with probability + mechanism
-
+| Ticker | Action (BUY/SELL/HEDGE/HOLD) | Catalyst (The Event) | Mechanism (Why it hits P&L) | Action Threshold (At what probability do we execute?) |
+|---|---|---|---|---|
 ---
 
 ## 5. Risk Calendar
