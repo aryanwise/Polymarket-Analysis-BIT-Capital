@@ -206,7 +206,7 @@ def run_pipeline(
 
     # ── Step 1: Ingest ────────────────────────────────────────
     logger.info("\n--- STEP 1: INGEST ---")
-    from pipeline.extract import run_ingest
+    from extract import run_ingest
     df_raw = run_ingest(max_events=max_events)
 
     if df_raw.empty:
@@ -251,6 +251,8 @@ def run_pipeline(
     )
 
     # ── Step 5: Report generator ──────────────────────────────
+    # Note: sentiment, impact_score, reasoning are now populated
+    # inside stage2_filter.py (Pass B) — no separate scoring step needed.
     report_id = None
     if not skip_report and not dry_run and not df_signals.empty:
         logger.info("\n--- STEP 5: REPORT GENERATOR ---")

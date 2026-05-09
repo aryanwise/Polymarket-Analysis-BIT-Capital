@@ -84,7 +84,7 @@ def run_once(dry_run: bool = False) -> dict:
         from pipeline.run_pipeline import run_pipeline
 
         result = run_pipeline(
-            max_events=args.max_events,
+            max_events=MAX_EVENTS,
             dry_run=dry_run,
             skip_report=False,
         )
@@ -199,10 +199,6 @@ Examples:
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Run pipeline without writing to DB",
-    )
-    parser.add_argument(
-        "--max-events", type=int, default=MAX_EVENTS,
-        help=f"Max Polymarket events to ingest (default: {MAX_EVENTS})",
     )
     args = parser.parse_args()
 

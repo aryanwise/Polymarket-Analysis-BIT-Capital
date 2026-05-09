@@ -40,7 +40,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = "gemini-2.0-flash"
-GROQ_MODEL   = "llama-3.3-70b-versatile"
+# GROQ_MODEL   = "llama-3.3-70b-versatile"
+GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct" # new model
 
 
 # ─────────────────────────────────────────────────────────────
@@ -50,37 +51,36 @@ GROQ_MODEL   = "llama-3.3-70b-versatile"
 FUND_BRIEF = """
 BIT Capital — Berlin-based technology fund, ~€500M AUM.
 Concentrated, high-conviction tech portfolio. Every holding has a thesis.
-Mandate: 12-to-18 month holding period. We actively hedge tail risks.
 
-CLUSTER 1 — CRYPTO INFRASTRUCTURE (25% of Fund)
-  IREN  (8% weight):  Bitcoin miner pivoting to AI data centers.
-                      Revenue = hashrate × BTC price. Break-even BTC ~$45-50k.
-  COIN  (12% weight): Crypto exchange. Revenue = volumes × fee rate.
-                      Regulatory risk is existential.
-  HUT   (5% weight):  Diversified miner + AI compute. Less BTC-pure than IREN.
+CLUSTER 1 — CRYPTO INFRASTRUCTURE
+  IREN  (IREN Limited):  Bitcoin miner pivoting to AI data centers.
+                         Revenue = hashrate × BTC price. Break-even BTC ~$45-50k.
+  HUT   (Hut 8 Corp.):  Diversified miner + AI compute. Less BTC-pure than IREN.
+  COIN  (Coinbase):      Crypto exchange. Revenue = volumes × fee rate.
+                         Regulatory risk is existential.
 
-CLUSTER 2 — SEMICONDUCTORS (35% of Fund)
-  NVDA  (15% weight): AI chips. ~20% revenue from China (H20). Export control risk.
-  TSM   (12% weight): Foundry for all AI chips. Taiwan = existential operational risk.
-  MU    (8% weight):  HBM memory for AI. Export control + Taiwan risk.
+CLUSTER 2 — SEMICONDUCTORS
+  NVDA  (NVIDIA):   AI chips. ~20% revenue from China (H20). Export control risk.
+  TSM   (TSMC):     Foundry for all AI chips. Taiwan = existential operational risk.
+  MU    (Micron):   HBM memory for AI. Export control + Taiwan risk.
 
-CLUSTER 3 — CLOUD / AI PLATFORMS (30% of Fund)
-  MSFT  (12% weight): Azure + OpenAI commercial deal. Antitrust risk (DOJ).
-  GOOGL (8% weight):  Search + Gemini AI. Antitrust ongoing.
-  META  (5% weight):  Llama AI. Ad revenue = macro consumer proxy.
-  AMZN  (3% weight):  AWS + Bedrock. Tariff risk on hardware.
-  DDOG  (2% weight):  Cloud monitoring. Leading indicator of enterprise AI spend.
+CLUSTER 3 — CLOUD / AI PLATFORMS
+  MSFT  (Microsoft):  Azure + OpenAI commercial deal. Antitrust risk (DOJ).
+  GOOGL (Alphabet):   Search + Gemini AI. Antitrust ongoing.
+  AMZN  (Amazon):     AWS + Bedrock. Tariff risk on hardware.
+  META  (Meta):       Llama AI. Ad revenue = macro consumer proxy.
+  DDOG  (Datadog):    Cloud monitoring. Leading indicator of enterprise AI spend.
 
-CLUSTER 4 — FINTECH / INSURTECH (10% of Fund)
-  HOOD  (5% weight):  Interest income + crypto revenue. Rate-sensitive.
-  RDDT  (3% weight):  AI data licensing + ads. AI regulation sensitivity.
-  LMND  (2% weight):  Insurance float in bonds. Rate cuts compress income.
+CLUSTER 4 — FINTECH / INSURTECH
+  HOOD  (Robinhood):   Interest income + crypto revenue. Rate-sensitive.
+  LMND  (Lemonade):    Insurance float in bonds. Rate cuts compress income.
+  RDDT  (Reddit):      AI data licensing + ads. AI regulation sensitivity.
 
 PORTFOLIO RISKS (priority order):
-1. Taiwan/China military — existential for TSM (12%), supply shock for NVDA/MU
-2. Bitcoin price — IREN near break-even at $45k BTC
-3. US chip export controls — ~20% NVDA China revenue at risk
-4. Fed rate path — affects our Fintech cluster directly
+1. Bitcoin price — IREN near break-even at $45k BTC
+2. Fed rate path — affects IREN, HUT, LMND, HOOD directly
+3. Taiwan/China military — existential for TSM, supply shock for NVDA/MU
+4. US chip export controls — ~20% NVDA China revenue at risk
 5. AI capex slowdown — DDOG is the canary in the coalmine
 6. Crypto regulation — COIN business model risk
 """
@@ -204,7 +204,7 @@ def fetch_top_signals(limit: int = 30) -> list[dict]:
         res = (
             supabase.table("signal_feed")
             .select("*")
-            .order("volume", desc=True)
+            .order("impact_score", desc=True)
             .limit(limit)
             .execute()
         )
@@ -226,41 +226,49 @@ You write the Daily Alpha Report for senior portfolio managers who make buy/sell
 They do not want summaries. They want your judgment.
 
 Your style:
-- Direct and precise. No hedging ("could", "may", "might").
+- Direct and precise. NEVER use: "could", "may", "might", "potential", "significant impact".
 - Cite specific probabilities: "markets price 67% chance of X — that implies Y."
 - State the transmission mechanism explicitly: [event] → [what changes] → [P&L impact].
 - Quantify where possible: % revenue at risk, basis points of margin, break-even levels.
 - Make a call. Acknowledge uncertainty but state your view.
-
-CRITICAL SYNTHESIS REQUIREMENT:
-- Look for CONTRADICTORY or COMPOUNDING signals across different markets.
-- Cross-Cluster Impact: If Market A implies higher energy costs (bad for IREN) but Market B implies lower rates (good for IREN borrowing), synthesize the net effect. 
-- The Canary Effect: If signals imply a slowdown in enterprise cloud spending (DDOG), explicitly connect that to the revenue expectations for the AI Platforms (MSFT, GOOGL).
-- Do not analyze signals in isolation. Connect the dots between macro policy, infrastructure costs, and tech fundamentals across the entire portfolio.
+- Get transmission direction right: a competitor winning = bearish for incumbents, not bullish.
+- Follow formatting instructions exactly — each field on its own line, not run together.
 
 This is NOT:
 - A list of signals.
 - A "things to watch" memo.
-- Vague market commentary.
+- Vague market commentary with hedging language.
 
 This is an actionable investment document."""
 
 
 def build_report_prompt(
-    signal_brief: str,
-    top_market:   dict,
-    tickers:      list[str],
-    date_str:     str,
+    signal_brief:  str,
+    top_market:    dict,
+    tickers:       list[str],
+    date_str:      str,
+    price_context: str = "",
 ) -> str:
     top_q   = top_market.get("question", "")
     top_t   = ", ".join(top_market.get("tickers", [top_market.get("ticker", "")]))
     top_yes = float(top_market.get("yes_price") or 0)
 
+    price_section = ""
+    if price_context:
+        price_section = f"""
+━━ LIVE PORTFOLIO PRICES ━━
+Use this to assess whether signals are already priced in or still actionable.
+A stock down 15% this week with a bearish signal = may already be priced in.
+A stock near 52-week lows with a bullish signal = potential entry point.
+
+{price_context}
+"""
+
     return f"""Today is {date_str}.
 
 ━━ FUND BRIEF ━━
 {FUND_BRIEF}
-
+{price_section}
 ━━ POLYMARKET SIGNAL DATA ━━
 These markets were classified as relevant to our portfolio by our signal pipeline.
 Each entry shows: the market question, affected tickers, current probability, and volume.
@@ -277,7 +285,12 @@ Prob:    {prob_framing(top_yes)}
 For each signal, you must:
 1. Determine the direction (Bullish/Bearish/Neutral) for each affected ticker
 2. Identify the transmission mechanism: [event outcome] → [what changes] → [P&L impact]
-3. Assess whether the current probability makes it actionable or just monitoring
+3. Cross-reference current price action — is this already priced in or still actionable?
+
+CRITICAL: Only reference markets that appear in the POLYMARKET SIGNAL DATA 
+section above. Do not invent signals, probabilities, or portfolio risks that 
+are not backed by an actual market listed above. If a cluster has no signals, 
+say "No active signals for this cluster this run."
 
 Write the Daily Alpha Report in this exact structure:
 
@@ -302,29 +315,51 @@ Include the transmission mechanism explicitly.
 ---
 
 ## 3. Most Interesting Markets Right Now
- 
-Pick exactly 3 markets from the signal data where the probability implies something
-actionable — not the highest volume, but the ones with the sharpest edge.
- 
-Criteria for selection:
-- The probability is at a level that creates asymmetric risk/reward for a specific holding
-- There is a divergence between the Polymarket crowd and what equity consensus expects
-- The YES or NO resolution would directly change a valuation driver, not just "sentiment"
- 
-For each market use EXACTLY this format, with each field on its own line:
- 
-**Market:** [the exact question text]
-**Probability:** [X%] — [one sentence on what this probability implies in plain English]
-**Why interesting:** [one sentence — be specific, name the holding and the mechanism]
-**If YES:** [specific impact on named ticker — revenue %, margin bps, or break-even cross]
-**If NO:** [specific alternative scenario for the same ticker]
-**Edge:** [is Polymarket above or below equity consensus? State the gap if you see one. If no gap, say "consensus aligned — monitoring only"]
- 
-Do not use hedging language ("could", "may", "might", "potential").
-State the direction and mechanism directly.
-Each field must be on its own line — do not run them together in a paragraph.
 
----
+Pick exactly 3 markets from the POLYMARKET SIGNAL DATA section above.
+Only use markets that appear in that section — do not invent signals.
+
+Criteria: pick markets where probability creates asymmetric risk/reward,
+or where Polymarket diverges from equity consensus.
+HARD RULE: Never pick a market with probability >85% or <15%. If you find yourself writing "near-certain" or "already priced in" about a market, it means you broke this rule — go back and pick a different market.
+
+Use EXACTLY this format. Each field on its own line. Blank line between markets.
+No deviations. Copy the field labels exactly as written below.
+
+--- FORMAT EXAMPLE (fictional — do not copy this market into your output) ---
+**Market:** Will flying cars be legal in the US by 2027?
+**Probability:** 12% — tail risk, market does not expect this
+**Why interesting:** FICTIONAL EXAMPLE — replace with a real market from the signal data above
+**If YES:** FICTIONAL
+**If NO:** FICTIONAL
+**Edge:** FICTIONAL
+--- END EXAMPLE ---
+
+**Market:** [first market question — from signal data above]
+**Probability:** [X%] — [one sentence]
+**Why interesting:** [one sentence, name ticker and mechanism]
+**If YES:** [specific impact — revenue %, margin bps, or named dollar figure]
+**If NO:** [specific alternative for same ticker]
+**Edge:** [Polymarket vs consensus gap, or "consensus aligned — monitoring only"]
+
+**Market:** [second market question]
+**Probability:** [X%] — [one sentence]
+**Why interesting:** [one sentence, name ticker and mechanism]
+**If YES:** [specific impact — revenue %, margin bps, or named dollar figure]
+**If NO:** [specific alternative for same ticker]
+**Edge:** [Polymarket vs consensus gap, or "consensus aligned — monitoring only"]
+
+**Market:** [third market question]
+**Probability:** [X%] — [one sentence]
+**Why interesting:** [one sentence, name ticker and mechanism]
+**If YES:** [specific impact]
+**If NO:** [specific alternative]
+**Edge:** [gap or consensus aligned]
+
+Rules:
+- No hedging language (no "could", "may", "might", "potential")
+- State impacts as specific numbers, not vague directions
+- Each field must be on its own line, never inline in a paragraph
 
 ## 4. Cluster Analysis
 
@@ -334,8 +369,9 @@ Connect: BTC direction + Fed rate path + energy signals.
 IREN breaks even at ~$45-50k BTC — what does the implied BTC direction mean for their margin?
 
 ### Semiconductors — NVDA, TSM, MU
-Probability-weighted revenue at risk. NVDA ~20% China revenue. What do signals imply?
-Taiwan/export control interaction.
+Check the signal data above. If no chip export / Taiwan / AI capex signals appear,
+write exactly: "No active Polymarket signals this run — monitoring only."
+Only write analysis if a relevant market appears in the signal data above.
 
 ### Cloud & AI Platforms — MSFT, GOOGL, AMZN, META, DDOG
 Any divergence between names?
@@ -348,11 +384,16 @@ What do current probability-weighted scenarios imply?
 ---
 
 ## 5. Actionable Recommendations
-Provide 3-5 specific, high-conviction recommendations based ONLY on the signals above.
-You MUST format this as a Markdown table with the following exact columns:
+3-5 specific recommendations. Each must reference a probability and transmission mechanism.
 
-| Ticker | Action (BUY/SELL/HEDGE/HOLD) | Catalyst (The Event) | Mechanism (Why it hits P&L) | Action Threshold (At what probability do we execute?) |
-|---|---|---|---|---|
+Only recommend action on markets where the probability creates genuine asymmetry:
+- Near-certain markets (>85% YES) are already priced in — do not BUY/ADD based on these
+- Tail risk markets (<20% YES) are monitoring only — do not BUY/ADD based on these
+- Actionable range is roughly 25-75% YES where the market is genuinely contested
+
+Format:
+**[BUY/SELL/HOLD/ADD/REDUCE/HEDGE] [TICKER]** — one sentence with probability + mechanism
+
 ---
 
 ## 6. Risk Calendar
@@ -420,7 +461,7 @@ def call_groq(prompt: str) -> str | None:
         logger.warning("Groq unavailable: %s", e)
         return None
 
-
+"""
 def generate_report(prompt: str) -> tuple[str | None, str]:
     logger.info("Trying Gemini %s...", GEMINI_MODEL)
     result = call_gemini(prompt)
@@ -435,6 +476,18 @@ def generate_report(prompt: str) -> tuple[str | None, str]:
         return result, GROQ_MODEL
 
     logger.error("Both Gemini and Groq failed")
+    return None, "none"
+"""
+
+def generate_report(prompt: str) -> tuple[str | None, str]:
+    """Using Groq only"""
+    logger.info("Generating report with Groq %s...", GROQ_MODEL)
+    result = call_groq(prompt)
+    if result:
+        logger.info("Report generated with Groq")
+        return result, GROQ_MODEL
+
+    logger.error("Groq failed")
     return None, "none"
 
 
@@ -469,12 +522,23 @@ def run_report_pipeline(top_n: int = 30) -> dict | None:
     logger.info("Unique markets in report : %d", len(unique_markets))
     logger.info("Tickers covered          : %s", ", ".join(tickers))
 
-    # 5. Build prompt
+    # 5. Fetch live prices for report context
+    price_context = ""
+    try:
+        from real_time_price import fetch_prices_for_report, build_price_context_for_prompt
+        prices        = fetch_prices_for_report()
+        price_context = build_price_context_for_prompt(prices)
+        logger.info("Live prices fetched for %d holdings", len(prices))
+    except Exception as e:
+        logger.warning("Price fetch failed (non-fatal): %s", e)
+
+    # 6. Build prompt
     prompt = build_report_prompt(
         signal_brief=signal_brief,
         top_market=top_market,
         tickers=tickers,
         date_str=date_str,
+        price_context=price_context,
     )
 
     # 6. Generate report

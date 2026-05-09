@@ -827,7 +827,7 @@ with st.sidebar:
         f"box-shadow:0 0 6px rgba(52,211,153,0.4);'></span>"
         f"System Online · {now}</div>")
     
-    if st.button("↻  Refresh Data", use_container_width=True):
+    if st.button("↻  Refresh Data", width="stretch"):
         st.cache_data.clear(); st.rerun()
 
     st.markdown("---")
@@ -1083,7 +1083,7 @@ with tab2:
     with col1:
         user_market = st.text_input(
             "Enter market (name or slug)",
-            placeholder="e.g. Will Satoshi move any Bitcoin in 2026?",
+            placeholder="e.g. How many Fed rate cuts in 2026?",
             label_visibility="collapsed"
         )
     with col2:
@@ -1377,7 +1377,7 @@ with tab3:
                 data=selected.get("content",""),
                 file_name=f"bit_alpha_{selected.get('generated_at','')[:10]}.md",
                 mime="text/markdown",
-                use_container_width=True,
+                width="stretch",
             )
 
         with rc2:
@@ -1538,7 +1538,7 @@ with tab4:
             })
         st.dataframe(
             pd.DataFrame(coverage_rows),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
