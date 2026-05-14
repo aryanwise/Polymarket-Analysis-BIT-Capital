@@ -257,7 +257,7 @@ def run_pipeline(
     # Note: sentiment, impact_score, reasoning are now populated
     # inside stage2_filter.py (Pass B) — no separate scoring step needed.
     report_id = None
-    if not skip_report and not dry_run and not df_signals.empty:
+    if not skip_report and not dry_run:
         logger.info("\n--- STEP 5: REPORT GENERATOR ---")
         try:
             from report_generator import run_report_pipeline
