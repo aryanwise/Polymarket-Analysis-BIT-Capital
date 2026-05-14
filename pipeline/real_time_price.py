@@ -292,7 +292,6 @@ def fetch_prices() -> list[dict]:
 
 
 def save_prices(rows: list[dict]) -> int:
-    """Save price snapshot to stock_prices table."""
     if not rows:
         return 0
     saved = 0
@@ -302,6 +301,9 @@ def save_prices(rows: list[dict]) -> int:
                 "ticker":     row["ticker"],
                 "price":      row["price"],
                 "change_pct": row["change_pct"],
+                "chg_5d":     row.get("chg_5d", 0),
+                "high_52w":   row.get("high_52w", 0),
+                "low_52w":    row.get("low_52w", 0),
                 "source":     row["source"],
                 "fetched_at": row["fetched_at"],
             }).execute()
