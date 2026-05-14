@@ -819,7 +819,7 @@ with st.sidebar:
     st.markdown("---")
     
     # Status indicator
-    now = datetime.astimezone().strftime("%H:%M local")
+    now = datetime.now().astimezone().strftime("%H:%M local")
     st.html(
         f"<div style='font-family:JetBrains Mono,monospace;font-size:11px;color:#4b5563;"
         f"display:flex;align-items:center;gap:8px;margin-bottom:16px;'>"
@@ -913,7 +913,7 @@ with tab1:
         </div>
         """)
     with c4:
-        now_time = datetime.astimezone().strftime("%H:%M local")
+        now_time = datetime.now().astimezone().strftime("%H:%M local")
         st.html(f"""
         <div style="background:linear-gradient(145deg,#161922,#1c1f2a);border:1px solid rgba(255,255,255,0.06);
                     border-radius:10px;padding:20px;text-align:center;transition:all 0.2s;">
