@@ -198,7 +198,7 @@ def build_signal_brief(signals: list[dict]) -> tuple[str, list[str]]:
 def fetch_top_signals(limit: int = 30) -> list[dict]:
     """
     Fetch signals from signal_feed view.
-    Ordered by volume (impact_score is NULL after stage 2 refactor).
+    Ordered by impact_score DESC — signals enriched by Pass B in stage2_filter.
     """
     try:
         res = (
@@ -232,14 +232,16 @@ Your style:
 - Quantify where possible: % revenue at risk, basis points of margin, break-even levels.
 - Make a call. Acknowledge uncertainty but state your view.
 - Get transmission direction right: a competitor winning = bearish for incumbents, not bullish.
-- Follow formatting instructions exactly — each field on its own line, not run together.
 
-This is NOT:
-- A list of signals.
-- A "things to watch" memo.
-- Vague market commentary with hedging language.
+MANDATORY FORMATTING RULES:
+- Every section header uses ## (e.g. ## 1. Portfolio Risk Posture)
+- Every subsection uses ### (e.g. ### Crypto Infrastructure)
+- Section 3 fields MUST be on separate lines with **bold** labels
+- Separate sections with --- dividers
+- Recommendations each on their own line starting with **BUY/SELL/HOLD/ADD/REDUCE/MONITOR**
+- Never merge multiple fields onto one line
 
-This is an actionable investment document."""
+This is an actionable investment document, not a memo."""
 
 
 def build_report_prompt(
@@ -308,9 +310,14 @@ Is the portfolio risk-on or risk-off? Which cluster faces the most exposure?
 ---
 
 ## 2. Signal of the Week
-The highest-priority signal above. Why does it matter most?
-State: probability, what happens to the stock if YES vs NO, and at what threshold it becomes actionable.
-Include the transmission mechanism explicitly.
+
+**Market:** [exact question]
+**Probability:** [X%] — [one sentence on what this implies]
+**Why it matters:** [one sentence — name the ticker and the specific P&L mechanism]
+**If YES:** [specific impact — name the ticker, give a number]
+**If NO:** [specific alternative for same ticker]
+**Transmission mechanism:** [event] → [what changes] → [P&L impact]
+**Threshold:** At what probability does this become actionable?
 
 ---
 
@@ -360,6 +367,8 @@ Rules:
 - No hedging language (no "could", "may", "might", "potential")
 - State impacts as specific numbers, not vague directions
 - Each field must be on its own line, never inline in a paragraph
+
+---
 
 ## 4. Cluster Analysis
 
@@ -447,8 +456,8 @@ def call_groq(prompt: str) -> str | None:
                         {"role": "system", "content": SYSTEM_INSTRUCTION},
                         {"role": "user",   "content": prompt},
                     ],
-                    temperature=0.3,
-                    max_tokens=3500,
+                    temperature=0.1,
+                    max_tokens=4096,
                 )
                 return resp.choices[0].message.content
             except Exception as e:
