@@ -139,6 +139,9 @@ def filter_already_processed(
             return df, pd.DataFrame()
 
         df_new   = df[~df["market_id"].isin(known_ids)].copy()
+        # removing the blocked market - no yes_price
+        BLOCKLIST = {"1301998"}
+        df_new = df_new[~df_new["market_id"].isin(BLOCKLIST)]
         df_known = df[ df["market_id"].isin(known_ids)].copy()
 
         logger.info(
