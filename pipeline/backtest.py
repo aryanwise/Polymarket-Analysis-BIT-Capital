@@ -40,6 +40,8 @@ import time
 import logging
 import yfinance as yf
 from datetime import datetime, timezone, timedelta
+import pytz
+berlin = pytz.timezone("Europe/Berlin")
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -66,7 +68,11 @@ def fetch_expired_unscored_signals() -> list[dict]:
     3. Haven't been evaluated yet (not in signal_outcomes)
     """
     try:
-        now = datetime.now(timezone.utc).isoformat()
+        now = (
+            datetime.now(pytz.utc)
+            .astimezone(berlin)
+            .isoformat()
+        )
 
         # Expired signals with sentiment
         res = (
@@ -111,7 +117,10 @@ def get_price_at_date(ticker: str, target_date: str) -> float | None:
     """
     try:
         from datetime import datetime
-        dt       = datetime.fromisoformat(target_date.replace("Z", "+00:00"))
+        dt = (
+            datetime.fromisoformat(target_date.replace("Z", "+00:00"))
+            .astimezone(berlin)
+        )
         start    = (dt - timedelta(days=3)).strftime("%Y-%m-%d")
         end      = (dt + timedelta(days=3)).strftime("%Y-%m-%d")
 
@@ -237,8 +246,13 @@ def run_backtest(dry_run: bool = False) -> dict:
         # Note: we approximate "price at signal creation" as price at end_date - 30 days
         # For a production system, you'd store price_at_creation when the signal is written
         signal_date = (
-            datetime.fromisoformat(end_date.replace("Z","+00:00")) - timedelta(days=30)
-        ).isoformat() if end_date else None
+            (
+                datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                .astimezone(berlin)
+                - timedelta(days=30)
+            ).isoformat()
+            if end_date else None
+        )
 
         price_at_signal = get_price_at_date(ticker, signal_date) if signal_date else None
         price_at_expiry = get_price_at_date(ticker, end_date) if end_date else None

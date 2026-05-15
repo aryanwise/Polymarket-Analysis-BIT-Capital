@@ -21,6 +21,8 @@ import requests
 import yfinance as yf
 from dotenv import load_dotenv
 from datetime import datetime, timezone
+import pytz
+berlin = pytz.timezone("Europe/Berlin")
 
 load_dotenv()
 
@@ -260,10 +262,17 @@ def fetch_prices() -> list[dict]:
     Keeps same interface as old real_time_price.py.
     """
     rows      = []
-    fetched_at = datetime.now(timezone.utc).isoformat()
+    fetched_at = (
+    datetime.now(pytz.utc)
+    .astimezone(berlin)
+    .strftime("%Y-%m-%dT%H:%M:%S %Z")
+    )
 
     print(f"\n{'='*55}")
-    print(f"  STOCK PRICE FETCH — {datetime.now().strftime('%H:%M:%S UTC')}")
+    print(
+    f"  STOCK PRICE FETCH — "
+    f"{datetime.now(pytz.utc).astimezone(berlin).strftime('%H:%M:%S %Z')}"
+    )
     print(f"{'='*55}")
 
     for ticker in TRACKED_TICKERS:

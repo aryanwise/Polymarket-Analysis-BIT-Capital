@@ -34,6 +34,8 @@ import logging
 import argparse
 import traceback
 from datetime import datetime, timezone, timedelta
+import pytz
+berlin = pytz.timezone("Europe/Berlin")
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -71,7 +73,7 @@ def run_once(dry_run: bool = False) -> dict:
     Executes the full pipeline once.
     Catches all exceptions so the scheduler never crashes.
     """
-    run_ts = datetime.now(timezone.utc)
+    run_ts = datetime.now(pytz.utc).astimezone(berlin)
     logger.info("=" * 60)
     logger.info("SCHEDULED RUN — %s", run_ts.strftime("%Y-%m-%d %H:%M UTC"))
     if dry_run:
@@ -128,7 +130,7 @@ def schedule_loop(interval_hours: float, dry_run: bool = False):
             logger.info("Shutdown requested — not scheduling next run.")
             return
 
-        next_run_dt = datetime.now(timezone.utc) + timedelta(seconds=interval_sec)
+        next_run_dt = (datetime.now(pytz.utc).astimezone(berlin) + timedelta(seconds=interval_sec))
         logger.info(
             "Next run in %.1f hours — at %s UTC",
             interval_hours,

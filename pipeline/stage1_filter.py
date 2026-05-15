@@ -24,6 +24,8 @@ import ast
 import logging
 import pandas as pd
 from datetime import datetime, timezone
+import pytz
+berlin = pytz.timezone("Europe/Berlin")
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +199,7 @@ if __name__ == "__main__":
     print(f"\nStats: {stats}")
 
     # Export debug Excel
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    ts = datetime.now(pytz.utc).astimezone(berlin).strftime("%Y%m%d_%H%M")
     filename = f"debug/stage1_debug_{ts}.xlsx"
 
     import os

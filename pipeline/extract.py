@@ -19,6 +19,8 @@ import logging
 import requests
 import pandas as pd
 from datetime import datetime, timezone
+import pytz
+berlin = pytz.timezone("Europe/Berlin")
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +97,7 @@ def run_ingest(max_events: int = MAX_EVENTS) -> pd.DataFrame:
                         "no_price":      no_price,
                         "volume":        float(market.get("volumeNum") or market.get("volume") or 0),
                         "end_date":      market.get("endDate"),
-                        "extracted_at":  datetime.now(timezone.utc).isoformat(),
+                        "extracted_at":  datetime.now(pytz.utc).astimezone(berlin).strftime("%H:%M CET"),
                     })
 
             logger.info("offset=%d | markets so far: %d", offset, len(rows))

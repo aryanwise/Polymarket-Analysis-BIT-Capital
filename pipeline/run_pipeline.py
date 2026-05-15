@@ -21,6 +21,8 @@ import argparse
 import logging
 import pandas as pd
 from datetime import datetime, timezone
+import pytz
+berlin = pytz.timezone("Europe/Berlin")
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -187,7 +189,7 @@ def run_pipeline(
     Runs the full pipeline end-to-end.
     Returns summary dict.
     """
-    run_start = datetime.now(timezone.utc)
+    run_start = datetime.now(pytz.utc).astimezone(berlin)
     run_ts    = run_start.strftime("%Y%m%d_%H%M%S")
 
     logger.info("=" * 60)
@@ -271,7 +273,9 @@ def run_pipeline(
         logger.info("\n--- STEP 5: REPORT skipped ---")
 
     # ── Final summary ─────────────────────────────────────────
-    elapsed = (datetime.now(timezone.utc) - run_start).total_seconds()
+    elapsed = (
+        datetime.now(pytz.utc).astimezone(berlin) - run_start
+    ).total_seconds()
 
     summary = {
         "status":          "success",
