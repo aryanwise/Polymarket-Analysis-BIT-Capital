@@ -22,6 +22,8 @@ from groq import Groq
 from ddgs import DDGS
 from dotenv import load_dotenv
 from datetime import datetime, timezone
+import pytz
+berlin = pytz.timezone("Europe/Berlin")
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 load_dotenv()
@@ -84,7 +86,10 @@ def get_existing_deep_dive(signal_id: int) -> dict | None:
 
         import dateutil.parser
         row       = res.data[0]
-        age_hours = (datetime.now(timezone.utc) - dateutil.parser.parse(row["created_at"])).total_seconds() / 3600
+        age_hours = (
+        datetime.now(pytz.utc).astimezone(berlin)
+        - dateutil.parser.parse(row["created_at"]).astimezone(berlin)
+        ).total_seconds() / 3600
 
         if age_hours < 6:
             print(f"  Cache hit ({age_hours:.1f}h old)")
@@ -269,7 +274,7 @@ def dig_deeper(signal_id: int) -> dict:
     Triggered when analyst clicks 'Analyse' on a signal.
     Steps: cache check → fetch signal → news search → Groq → save → return
     """
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(pytz.utc).astimezone(berlin)
     print(f"\n{'='*55}\n  DIG DEEPER — signal_id={signal_id}\n{'='*55}")
 
     # 1. Cache check
@@ -347,7 +352,9 @@ def dig_deeper(signal_id: int) -> dict:
     except Exception as e:
         print(f"  DB save failed: {e}")
 
-    elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+    elapsed = (
+        datetime.now(pytz.utc).astimezone(berlin) - started_at
+    ).total_seconds()
     print(f"  Complete — {elapsed:.1f}s\n")
 
     return {
@@ -356,6 +363,107 @@ def dig_deeper(signal_id: int) -> dict:
         "source_urls":   list(dict.fromkeys(source_urls)),
         "from_cache":    False,
     }
+
+def get_news_divergence(signal: dict) -> dict | None:
+    """
+    Lightweight version of dig_deeper for report injection.
+    Returns divergence assessment without saving to DB.
+    Used by report_generator.py for Crowd vs Reality section.
+    """
+    yes      = float(signal.get("yes_price") or 0)
+    queries  = build_news_queries(signal)
+    headlines, urls = fetch_news(queries, max_per_query=3)
+
+    if not headlines or not urls:
+        return None
+
+    prompt = f"""Compare Polymarket crowd pricing against mainstream news.
+
+Market:    {signal.get("question", "")}
+Ticker:    {signal.get("ticker", "")}
+Polymarket YES probability: {yes:.0%}
+
+Recent headlines:
+{headlines}
+
+Respond in EXACTLY this format, one field per line:
+NEWS_SENTIMENT: Bullish or Bearish or Neutral
+NEWS_CONFIDENCE: 0-100
+DIVERGENCE: HIGH or MEDIUM or LOW or NONE
+EXPLANATION: one sentence on what the gap means"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system",
+                 "content": "You are a financial analyst. Assess news sentiment vs prediction market pricing. Be direct and specific."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=200,
+        )
+        raw = resp.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"  Divergence call failed: {e}")
+        return None
+
+    # Parse response
+    result = {
+        "question":        signal.get("question", ""),
+        "ticker":          signal.get("ticker", ""),
+        "yes_price":       yes,
+        "headlines":       headlines,
+        "news_sentiment":  "Neutral",
+        "news_confidence": 50,
+        "divergence":      "NONE",
+        "explanation":     "",
+        "source_urls":     urls,
+    }
+
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith("NEWS_SENTIMENT:"):
+            val = line.split(":", 1)[1].strip().capitalize()
+            if val in ("Bullish", "Bearish", "Neutral"):
+                result["news_sentiment"] = val
+        elif line.startswith("NEWS_CONFIDENCE:"):
+            try:
+                result["news_confidence"] = int(line.split(":", 1)[1].strip())
+            except:
+                pass
+        elif line.startswith("DIVERGENCE:"):
+            val = line.split(":", 1)[1].strip().upper()
+            if val in ("HIGH", "MEDIUM", "LOW", "NONE"):
+                result["divergence"] = val
+        elif line.startswith("EXPLANATION:"):
+            result["explanation"] = line.split(":", 1)[1].strip()
+
+    return result
+
+
+def calculate_divergence(yes_price: float, news_sentiment: str,
+                          news_confidence: int) -> str:
+    """
+    Override or confirm the LLM divergence label with rule-based logic.
+    LLM output + rules = more reliable divergence signal.
+    """
+    poly_bullish = yes_price >= 0.55
+    poly_bearish = yes_price <= 0.45
+    news_bullish = news_sentiment == "Bullish"
+    news_bearish = news_sentiment == "Bearish"
+    confident    = news_confidence >= 60
+
+    # Strong divergence: crowd and news pointing opposite directions
+    if poly_bullish and news_bearish and confident:
+        return "HIGH"   # Polymarket sees something news hasn't priced
+    if poly_bearish and news_bullish and confident:
+        return "HIGH"   # News is ahead of Polymarket
+    if poly_bullish and news_bullish and confident:
+        return "NONE"   # Aligned — less interesting
+    if poly_bearish and news_bearish and confident:
+        return "NONE"   # Aligned — less interesting
+    return "MEDIUM"     # Uncertain in either direction
 
 
 if __name__ == "__main__":

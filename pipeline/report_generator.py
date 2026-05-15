@@ -25,6 +25,8 @@ import time
 import logging
 from dotenv import load_dotenv
 from datetime import datetime, timezone
+import pytz
+berlin = pytz.timezone("Europe/Berlin")
 from collections import defaultdict
 
 load_dotenv()
@@ -39,7 +41,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 # GROQ_MODEL   = "llama-3.3-70b-versatile"
 GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct" # new model
 
@@ -194,6 +196,82 @@ def build_signal_brief(signals: list[dict]) -> tuple[str, list[str]]:
 
     return "\n".join(lines), all_tickers
 
+def build_crowd_vs_reality(signals: list[dict], max_signals: int = 3) -> str:
+    """
+    For top N signals by impact_score, fetch news and calculate divergence.
+    Returns formatted section string to inject into report prompt.
+    Only runs on signals with impact_score >= 7 to keep runtime reasonable.
+    """
+    try:
+        from dig_deeper_analysis import get_news_divergence, calculate_divergence
+    except ImportError:
+        logger.warning("dig_deeper not available — skipping Crowd vs Reality")
+        return ""
+
+    # Filter to high-score signals only, deduplicated by market
+    unique = deduplicate_by_market(signals)
+    high_score = [
+        m for m in unique
+        if float(m.get("impact_score") or 0) >= 7
+    ][:max_signals]
+
+    if not high_score:
+        return ""
+
+    logger.info("Running Crowd vs Reality for %d signals...", len(high_score))
+
+    sections = []
+    for market in high_score:
+        result = get_news_divergence(market)
+        if not result:
+            continue
+
+        # Override with rule-based check
+        divergence = calculate_divergence(
+            result["yes_price"],
+            result["news_sentiment"],
+            result["news_confidence"],
+        )
+        result["divergence"] = divergence
+
+        yes_pct    = f"{result['yes_price']:.0%}"
+        sentiment  = result["news_sentiment"]
+        confidence = result["news_confidence"]
+        div        = result["divergence"]
+        explanation = result["explanation"]
+        ticker     = result["ticker"]
+        question   = result["question"]
+
+        # Divergence label with emoji for dashboard readability
+        div_label = {
+            "HIGH":   "🔴 HIGH — information gap detected",
+            "MEDIUM": "🟡 MEDIUM — uncertain signal",
+            "LOW":    "🟢 LOW — crowd and news aligned",
+            "NONE":   "⚪ NONE — fully aligned",
+        }.get(div, div)
+
+        # Alpha implication based on divergence direction
+        poly_bullish = result["yes_price"] >= 0.55
+        if div == "HIGH" and poly_bullish and sentiment == "Bearish":
+            alpha = f"Polymarket is pricing {yes_pct} YES but news consensus is Bearish at {confidence}% confidence — Polymarket sees a hidden catalyst. Watch {ticker} for asymmetric upside if the crowd is right."
+        elif div == "HIGH" and not poly_bullish and sentiment == "Bullish":
+            alpha = f"News is Bullish at {confidence}% confidence but Polymarket prices only {yes_pct} — market underpricing positive catalyst. {ticker} is a contrarian entry if news is leading."
+        else:
+            alpha = f"{ticker} crowd and news are broadly aligned at {yes_pct} YES — no information gap. Monitor for divergence."
+
+        sections.append(f"""**Signal:** {question}
+**Polymarket:** {yes_pct} YES — crowd pricing
+**News consensus:** {sentiment} ({confidence}% confidence across {len(result['source_urls'])} sources)
+**Divergence:** {div_label}
+**What it means:** {explanation}
+**Alpha implication:** {alpha}""")
+
+    if not sections:
+        return ""
+
+    header = "## 3.5 Crowd vs Reality\n\nFor high-priority signals, we compare Polymarket crowd pricing against live news consensus to identify information gaps where the crowd sees something the equity market hasn't priced yet.\n\n---\n\n"
+    return header + "\n\n---\n\n".join(sections)
+
 
 def fetch_top_signals(limit: int = 30) -> list[dict]:
     """
@@ -287,6 +365,8 @@ Prob:    {prob_framing(top_yes)}
 
 ━━ YOUR TASK ━━
 
+Portfolio tickers in scope: {", ".join(tickers)}
+
 For each signal, you must:
 1. Determine the direction (Bullish/Bearish/Neutral) for each affected ticker
 2. Identify the transmission mechanism: [event outcome] → [what changes] → [P&L impact]
@@ -331,7 +411,10 @@ Only use markets that appear in that section — do not invent signals.
 
 Criteria: pick markets where probability creates asymmetric risk/reward,
 or where Polymarket diverges from equity consensus.
-HARD RULE: Never pick a market with probability >85% or <15%. If you find yourself writing "near-certain" or "already priced in" about a market, it means you broke this rule — go back and pick a different market.
+
+HARD RULE: Never pick a market with probability >85% or <15%.
+CHECK YOURSELF: Before writing each market, state its probability.
+If it is above 85%, STOP and pick a different market.
 
 Use EXACTLY this format. Each field on its own line. Blank line between markets.
 No deviations. Copy the field labels exactly as written below.
@@ -432,8 +515,8 @@ def call_gemini(prompt: str) -> str | None:
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
-                temperature=0.3,
-                max_output_tokens=4000,
+                temperature=0.1,
+                max_output_tokens=8192,
             ),
         )
         return response.text
@@ -472,26 +555,28 @@ def call_groq(prompt: str) -> str | None:
         logger.warning("Groq unavailable: %s", e)
         return None
 
-"""
+
 def generate_report(prompt: str) -> tuple[str | None, str]:
+    # Try Gemini 2.5 Flash first
     logger.info("Trying Gemini %s...", GEMINI_MODEL)
     result = call_gemini(prompt)
     if result:
         logger.info("Report generated with Gemini")
         return result, GEMINI_MODEL
 
+    # Groq fallback
     logger.info("Falling back to Groq %s...", GROQ_MODEL)
     result = call_groq(prompt)
     if result:
         logger.info("Report generated with Groq")
         return result, GROQ_MODEL
 
-    logger.error("Both Gemini and Groq failed")
+    logger.error("Both failed")
     return None, "none"
-"""
 
+"""
 def generate_report(prompt: str) -> tuple[str | None, str]:
-    """Using Groq only"""
+    '''Using Groq only'''
     logger.info("Generating report with Groq %s...", GROQ_MODEL)
     result = call_groq(prompt)
     if result:
@@ -500,14 +585,14 @@ def generate_report(prompt: str) -> tuple[str | None, str]:
 
     logger.error("Groq failed")
     return None, "none"
-
+"""
 
 # ─────────────────────────────────────────────────────────────
 # MAIN PIPELINE
 # ─────────────────────────────────────────────────────────────
 
 def run_report_pipeline(top_n: int = 30) -> dict | None:
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(pytz.utc).astimezone(berlin)
     date_str   = started_at.strftime("%B %d, %Y")
 
     logger.info("=" * 60)
@@ -543,6 +628,15 @@ def run_report_pipeline(top_n: int = 30) -> dict | None:
     except Exception as e:
         logger.warning("Price fetch failed (non-fatal): %s", e)
 
+    # 5.5 Crowd vs Reality — news divergence for top signals
+    crowd_vs_reality = ""
+    try:
+        crowd_vs_reality = build_crowd_vs_reality(ranked, max_signals=3)
+        if crowd_vs_reality:
+            logger.info("Crowd vs Reality section built")
+    except Exception as e:
+        logger.warning("Crowd vs Reality failed (non-fatal): %s", e)
+
     # 6. Build prompt
     prompt = build_report_prompt(
         signal_brief=signal_brief,
@@ -556,6 +650,13 @@ def run_report_pipeline(top_n: int = 30) -> dict | None:
     report_content, model_used = generate_report(prompt)
     if not report_content:
         return None
+    
+    if crowd_vs_reality:
+        report_content = report_content.replace(
+            "## 4. Cluster Analysis",
+            f"{crowd_vs_reality}\n\n---\n\n## 4. Cluster Analysis",
+            1
+        )
 
     # 7. Save to DB
     try:
@@ -588,7 +689,7 @@ def run_report_pipeline(top_n: int = 30) -> dict | None:
         except Exception:
             pass
 
-    elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+    elapsed = (datetime.now(pytz.utc).astimezone(berlin) - started_at).total_seconds()
     logger.info("=" * 60)
     logger.info("REPORT COMPLETE — %.1fs", elapsed)
     logger.info("  Report ID   : %d", report_id)
