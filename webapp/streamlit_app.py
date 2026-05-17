@@ -5,6 +5,7 @@ BIT Capital — Polymarket Signal Scanner
 import os, sys, json, html as _html
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import re
 import yfinance as yf
 import streamlit as st
 import pandas as pd
@@ -1405,7 +1406,8 @@ with tab3:
 
             # Content — render markdown cleanly, CSS handles the card styling
             content = selected.get("content","")
-            st.markdown(content)
+            content_safe = re.sub(r'\$(?=[\d\w])', r'\\$', content)
+            st.markdown(content_safe)
 
 # ════════════════════════════════════════════════════════════
 # TAB 4 — HOLDINGS (Bloomberg-style Market Monitor)
