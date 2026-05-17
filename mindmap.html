@@ -9,9 +9,8 @@
     <!-- Mermaid.js Runtime Script -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
     <script>
-        // Initialize Mermaid with a clean, light base theme
         mermaid.initialize({
-            startOnLoad: true,
+            startOnLoad: false,
             theme: 'base',
             themeVariables: {
                 background: 'transparent',
@@ -23,6 +22,9 @@
                 tertiaryColor: 'rgba(255, 255, 255, 0.3)',
                 fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif'
             }
+        });
+        window.addEventListener('load', function () {
+            mermaid.run({ querySelector: '.mermaid' });
         });
     </script>
 
@@ -412,29 +414,40 @@
 
                 subgraph EXT["1 · Extraction — ingest.py"]
                 direction TB
-                E1["Polymarket REST API\npagination"] --> E2["3000 events default\n--max-events flag"] --> E3["Page size
-                500\noffset increments"] --> E4["~32000 markets\nraw DataFrame"]
+                E1["Polymarket REST API
+                pagination"] --> E2["3000 events default
+                --max-events flag"] --> E3["Page size 500
+                offset increments"] --> E4["~32000 markets
+                raw DataFrame"]
                 end
 
                 subgraph S1["2a · Stage 1 Filter — stage1_filter.py"]
                 direction TB
-                F1["0a/0b · Zero volume and missing price"] --> F2["1 · Expired markets"] --> F3["2 · Fully resolved
-                YES=0 or 1"] --> F4["3 · Near-certain YES under 4% or over 96%"] --> F5["4 · Irrelevant tags\nsports,
-                celebrity, weather"] --> F6["5/6 · Dedup by event + min $5k volume"] --> S1OUT["~75 markets kept 0.2%"]
+                F1["0a/0b - Zero volume and missing price"] --> F2["1 - Expired markets"] --> F3["2 - Fully resolved
+                YES=0 or 1"] --> F4["3 - Near-certain YES under 4pct or over 96pct"] --> F5["4 - Irrelevant tags
+                sports, celebrity, weather"] --> F6["5/6 - Dedup by event + min 5k volume"] --> S1OUT["~75 markets kept
+                0.2%"]
                 end
 
                 subgraph INC["2.5 · Incremental Filter"]
                 direction TB
-                I1["New ~7 markets\nnever seen, to LLM"]
-                I2["Known ~70 markets\nprice refresh only"]
-                I3["95% LLM cost reduction\non mature runs"]
+                I1["New ~7 markets
+                never seen, to LLM"]
+                I2["Known ~70 markets
+                price refresh only"]
+                I3["95% LLM cost reduction
+                on mature runs"]
                 end
 
                 subgraph S2["2b · Stage 2 Three-pass LLM — stage2_filter.py"]
                 direction TB
-                P1["Pass 1 — Mistral Small\nBinary SIGNAL or NOISE\nbatch=20, fail open"] --> P2["Pass 2 — Llama 4
-                Scout\nMarket to ticker mapping\nbatch=10, fail closed"] --> PB["Pass B — Llama 4 Scout\nSentiment,
-                score 1-10\nreasoning with dollar figure"]
+                P1["Pass 1 — Mistral Small
+                Binary SIGNAL or NOISE
+                batch=20, fail open"] --> P2["Pass 2 — Llama 4 Scout
+                Market to ticker mapping
+                batch=10, fail closed"] --> PB["Pass B — Llama 4 Scout
+                Sentiment, score 1-10
+                reasoning with dollar figure"]
                 end
 
                 subgraph DB["3 · Supabase DB"]
@@ -448,15 +461,21 @@
 
                 subgraph RPT["4 · Report — report_generator.py"]
                 direction TB
-                R1["Top 30 signals\nby impact_score"] --> R2["Live prices\nYahoo Finance + FMP"] --> R3["Crowd vs
-                Reality\nDDGS news divergence"] --> R4["Gemini 2.5 Flash\ntemp=0.1, 16k tokens\nGroq fallback"] -->
-                ROUT["6-section Alpha Report\nsaved to DB"]
+                R1["Top 30 signals
+                by impact_score"] --> R2["Live prices
+                Yahoo Finance + FMP"] --> R3["Crowd vs Reality
+                DDGS news divergence"] --> R4["Gemini 2.5 Flash
+                temp=0.1, 16k tokens
+                Groq fallback"] --> ROUT["6-section Alpha Report
+                saved to DB"]
                 end
 
                 subgraph PX["Prices — prices.py"]
                 direction TB
-                PX1["For report\ndict to LLM prompt"]
-                PX2["For dashboard\nStreamlit Holdings tab"]
+                PX1["For report
+                dict to LLM prompt"]
+                PX2["For dashboard
+                Streamlit Holdings tab"]
                 end
 
                 subgraph BT["Backtesting — backtest.py"]
@@ -466,8 +485,12 @@
 
                 subgraph EX["Extra Features"]
                 direction TB
-                EX1["Dig Deeper Analysis\nDDGS news + Groq\ncached 6h per signal"]
-                EX2["Polymarket Explorer\nAny market on demand\nportfolio impact analysis"]
+                EX1["Dig Deeper Analysis
+                DDGS news + Groq
+                cached 6h per signal"]
+                EX2["Polymarket Explorer
+                Any market on demand
+                portfolio impact analysis"]
                 end
 
                 RPT --> PX
@@ -664,7 +687,7 @@
                         <div class="sub-title">Explore Market — explore_polymarket_news.py</div>
                         <p style="color:#3A3A3C; font-size:0.95rem;">The <strong>Explore Market</strong> tab embeds an
                             ad-hoc market
-                            explorer powered by pipeline/explore_polymarket_news.py. It lets you analyse any Polymarket
+                            explorer. It lets you analyse any Polymarket
                             event on demand — not just the ones surfaced by the automated pipeline — and instantly see
                             how it relates to the BIT Capital portfolio.</p>
                     </div>
