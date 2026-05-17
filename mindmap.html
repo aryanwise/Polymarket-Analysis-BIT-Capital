@@ -5,6 +5,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Polymarket Intelligence Pipeline</title>
+
+    <!-- Mermaid.js Runtime Script -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+    <script>
+        // Initialize Mermaid with a clean, light base theme
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'base',
+            themeVariables: {
+                background: 'transparent',
+                primaryColor: '#FFFFFF',
+                primaryTextColor: '#1C1C1E',
+                primaryBorderColor: 'rgba(0, 0, 0, 0.08)',
+                lineColor: '#8E8E93',
+                secondaryColor: 'rgba(255, 255, 255, 0.5)',
+                tertiaryColor: 'rgba(255, 255, 255, 0.3)',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif'
+            }
+        });
+    </script>
+
     <style>
         /* Global Reset & Base Setup */
         * {
@@ -16,34 +37,35 @@
         }
 
         :root {
-            /* iOS Style Color Palette */
-            --ios-blue: #0A84FF;
-            --ios-orange: #FF9F0A;
-            --ios-purple: #BF5AF2;
-            --ios-green: #32D74B;
-            --ios-pink: #FF375F;
+            /* Syncing HTML accents with the new Mermaid SVG colors */
+            --ios-green: #2e7d32;
+            --ios-blue: #1565c0;
+            --ios-purple: #4527a0;
+            --ios-orange: #ef6c00;
+            --ios-pink: #ad1457;
 
-            /* Grayish Glass Theme Variables */
-            --glass-bg: rgba(44, 44, 46, 0.45);
-            /* Sleek, neutral gray frosted panel */
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --glass-highlight: rgba(255, 255, 255, 0.12);
+            /* Authentic iOS Light Glass Variables */
+            --glass-bg: rgba(255, 255, 255, 0.45);
+            /* Lower opacity to let tints show through */
+            --glass-border: rgba(255, 255, 255, 0.6);
+            --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
             --easing: cubic-bezier(0.25, 1, 0.5, 1);
         }
 
-        /* iOS Mesh Gradient Background - Gray/Silver Edition */
+        /* PREMIUM TINTED BACKGROUND 
+           Uses a soft blend of light grey, ice blue, and warm silver 
+           to create depth behind the frosted glass.
+        */
         body {
-            /* Authentic Apple-like typography stack */
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #111112;
-            /* Deep charcoal base */
+            background-color: #E8E8ED;
             background-image:
-                radial-gradient(circle at 15% 20%, rgba(142, 142, 147, 0.12) 0%, transparent 45%),
-                radial-gradient(circle at 85% 30%, rgba(99, 99, 102, 0.15) 0%, transparent 45%),
-                radial-gradient(circle at 50% 80%, rgba(174, 174, 178, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 80% 90%, rgba(72, 72, 74, 0.15) 0%, transparent 45%);
+                radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.9) 0%, transparent 40%),
+                radial-gradient(circle at 90% 20%, rgba(200, 215, 235, 0.7) 0%, transparent 50%),
+                radial-gradient(circle at 30% 80%, rgba(225, 230, 240, 0.8) 0%, transparent 50%),
+                radial-gradient(circle at 80% 90%, rgba(235, 225, 235, 0.6) 0%, transparent 50%);
             background-attachment: fixed;
-            color: #F2F2F7;
+            color: #1C1C1E;
             line-height: 1.5;
             padding: 50px 20px;
             min-height: 100vh;
@@ -54,18 +76,18 @@
             margin: 0 auto;
         }
 
-        /* Reusable iOS Glass Class */
+        /* Pristine Tinted Glass Panels */
         .glass-panel {
             background: var(--glass-bg);
-            backdrop-filter: blur(30px);
-            -webkit-backdrop-filter: blur(30px);
+            /* The 'saturate' property is the secret to Apple's glass look */
+            backdrop-filter: blur(40px) saturate(150%);
+            -webkit-backdrop-filter: blur(40px) saturate(150%);
             border: 1px solid var(--glass-border);
             border-radius: 24px;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            box-shadow: var(--glass-shadow), inset 0 1px 1px rgba(255, 255, 255, 0.8);
             transition: transform 0.4s var(--easing), box-shadow 0.4s var(--easing), background 0.4s var(--easing);
         }
 
-        /* Header Component */
         .header {
             text-align: center;
             margin-bottom: 40px;
@@ -75,15 +97,13 @@
         .header h1 {
             font-size: 2.5rem;
             font-weight: 700;
-            background: linear-gradient(135deg, #FFFFFF 0%, #A1A1AA 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            color: #000000;
             margin-bottom: 10px;
             letter-spacing: -0.03em;
         }
 
         .header p {
-            color: #98989D;
+            color: #6C6C70;
             font-size: 1.1rem;
             font-weight: 500;
         }
@@ -95,18 +115,15 @@
             align-items: center;
             margin-bottom: 50px;
             padding: 30px;
+            overflow-x: auto;
         }
 
-        .big-picture img {
-            filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
-            transition: transform 0.5s var(--easing);
+        .mermaid {
+            width: 100%;
+            display: flex;
+            justify-content: center;
         }
 
-        .big-picture:hover img {
-            transform: scale(1.02);
-        }
-
-        /* Interactive Section Cards */
         .section {
             margin-bottom: 25px;
             overflow: hidden;
@@ -115,9 +132,8 @@
 
         .section:hover {
             transform: translateY(-4px) scale(1.005);
-            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-            background: rgba(60, 60, 65, 0.45);
-            /* Slightly lighter gray glass on hover */
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 1);
+            background: rgba(255, 255, 255, 0.65);
         }
 
         .section-header {
@@ -128,13 +144,11 @@
             align-items: center;
             gap: 14px;
             letter-spacing: -0.01em;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.04);
         }
 
-        /* iOS Notification Badge Style for Numbers */
         .section-header span {
-            background: rgba(255, 255, 255, 0.1);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.04);
             border-radius: 8px;
             width: 32px;
             height: 32px;
@@ -143,64 +157,68 @@
             align-items: center;
             font-size: 1rem;
             font-weight: 700;
-            color: #FFF;
+            color: #1C1C1E;
         }
 
         .section-body {
             padding: 24px;
         }
 
-        /* Vibrant iOS Accent Colors (These now pop perfectly against the gray) */
+        /* Colors Synchronized to your Mermaid Graph */
         .extract {
-            border-left: 4px solid var(--ios-blue);
-        }
-
-        .extract .section-header {
-            background: linear-gradient(90deg, rgba(10, 132, 255, 0.1) 0%, transparent 100%);
-            color: var(--ios-blue);
-        }
-
-        .extract .section-header span {
-            background: var(--ios-blue);
-        }
-
-        .filter {
-            border-left: 4px solid var(--ios-orange);
-        }
-
-        .filter .section-header {
-            background: linear-gradient(90deg, rgba(255, 159, 10, 0.1) 0%, transparent 100%);
-            color: var(--ios-orange);
-        }
-
-        .filter .section-header span {
-            background: var(--ios-orange);
-        }
-
-        .db {
-            border-left: 4px solid var(--ios-purple);
-        }
-
-        .db .section-header {
-            background: linear-gradient(90deg, rgba(191, 90, 242, 0.1) 0%, transparent 100%);
-            color: var(--ios-purple);
-        }
-
-        .db .section-header span {
-            background: var(--ios-purple);
-        }
-
-        .report {
             border-left: 4px solid var(--ios-green);
         }
 
-        .report .section-header {
-            background: linear-gradient(90deg, rgba(50, 215, 75, 0.1) 0%, transparent 100%);
+        .extract .section-header {
+            background: linear-gradient(90deg, rgba(46, 125, 50, 0.05) 0%, transparent 100%);
             color: var(--ios-green);
         }
 
+        .extract .section-header span {
+            background: rgba(46, 125, 50, 0.12);
+            color: var(--ios-green);
+        }
+
+        .filter {
+            border-left: 4px solid var(--ios-blue);
+        }
+
+        .filter .section-header {
+            background: linear-gradient(90deg, rgba(21, 101, 192, 0.05) 0%, transparent 100%);
+            color: var(--ios-blue);
+        }
+
+        .filter .section-header span {
+            background: rgba(21, 101, 192, 0.12);
+            color: var(--ios-blue);
+        }
+
+        .db {
+            border-left: 4px solid var(--ios-orange);
+        }
+
+        .db .section-header {
+            background: linear-gradient(90deg, rgba(239, 108, 0, 0.05) 0%, transparent 100%);
+            color: var(--ios-orange);
+        }
+
+        .db .section-header span {
+            background: rgba(239, 108, 0, 0.12);
+            color: var(--ios-orange);
+        }
+
+        .report {
+            border-left: 4px solid var(--ios-pink);
+        }
+
+        .report .section-header {
+            background: linear-gradient(90deg, rgba(173, 20, 87, 0.05) 0%, transparent 100%);
+            color: var(--ios-pink);
+        }
+
         .report .section-header span {
-            background: var(--ios-green);
+            background: rgba(173, 20, 87, 0.12);
+            color: var(--ios-pink);
         }
 
         .extra {
@@ -208,15 +226,15 @@
         }
 
         .extra .section-header {
-            background: linear-gradient(90deg, rgba(255, 55, 95, 0.1) 0%, transparent 100%);
+            background: linear-gradient(90deg, rgba(194, 24, 91, 0.05) 0%, transparent 100%);
             color: var(--ios-pink);
         }
 
         .extra .section-header span {
-            background: var(--ios-pink);
+            background: rgba(194, 24, 91, 0.12);
+            color: var(--ios-pink);
         }
 
-        /* Typography & Lists */
         .item-list {
             list-style: none;
         }
@@ -224,11 +242,10 @@
         .item-list li {
             padding: 10px 0 10px 28px;
             position: relative;
-            color: #D1D1D6;
+            color: #3A3A3C;
             font-size: 1rem;
         }
 
-        /* Sleek chevron for list items */
         .item-list li::before {
             content: "›";
             position: absolute;
@@ -241,56 +258,54 @@
         }
 
         .item-list li strong {
-            color: #FFFFFF;
+            color: #000000;
             font-weight: 600;
         }
 
-        /* Inner Glass Cards (Recessed Look) */
+        /* Clean White Inner Cards (Nested Glass) */
         .sub-box,
         .pass-card,
-        .edge-card {
-            background: rgba(28, 28, 30, 0.5);
-            /* Deep inset gray */
+        .edge-card,
+        .incremental-box {
+            background: rgba(255, 255, 255, 0.55);
             border-radius: 18px;
             padding: 20px;
             margin: 14px 0;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            transition: background 0.3s ease, border 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s ease, transform 0.3s ease, background 0.3s ease;
         }
 
         .sub-box:hover,
         .pass-card:hover,
-        .edge-card:hover {
-            background: rgba(58, 58, 60, 0.5);
-            /* Slightly lighter inset gray on hover */
-            border: 1px solid rgba(255, 255, 255, 0.09);
+        .edge-card:hover,
+        .incremental-box:hover {
+            background: rgba(255, 255, 255, 0.85);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+            transform: translateY(-2px);
         }
 
         .sub-title {
             font-size: 1rem;
             font-weight: 700;
-            color: #EBEBF5;
+            color: #1C1C1E;
             margin-bottom: 12px;
             display: flex;
             align-items: center;
         }
 
-        /* iOS Pill-Style Tags */
         .tag {
             display: inline-flex;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.8);
             padding: 6px 12px;
             border-radius: 20px;
             font-size: 0.8rem;
             font-weight: 600;
-            color: #FFFFFF;
+            color: #3A3A3C;
             margin-top: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(0, 0, 0, 0.05);
         }
 
-        /* Layout Grids */
         .pass-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -299,7 +314,7 @@
         }
 
         .pass-card h4 {
-            color: var(--ios-orange);
+            color: var(--ios-blue);
             margin-bottom: 8px;
             font-size: 1.05rem;
             font-weight: 600;
@@ -307,7 +322,7 @@
 
         .pass-card p {
             font-size: 0.95rem;
-            color: #D1D1D6;
+            color: #3A3A3C;
         }
 
         .edge-box {
@@ -322,7 +337,7 @@
         }
 
         .edge-card.fail-closed {
-            border-left: 3px solid #FF453A;
+            border-left: 3px solid #FF3B30;
         }
 
         .edge-card h4 {
@@ -335,7 +350,7 @@
         }
 
         .edge-card.fail-closed h4 {
-            color: #FF453A;
+            color: #FF3B30;
         }
 
         .two-col {
@@ -344,23 +359,15 @@
             gap: 24px;
         }
 
-        /* Dynamic Island-style Incremental Box */
         .incremental-box {
-            background: rgba(28, 28, 30, 0.6);
-            border: 1px solid rgba(50, 215, 75, 0.3);
-            border-radius: 20px;
-            padding: 16px 20px;
-            margin-top: 16px;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-            backdrop-filter: blur(20px);
+            border-left: 3px solid #757575;
         }
 
         .incremental-box strong {
-            color: var(--ios-green);
+            color: #212121;
             font-size: 1.05rem;
         }
 
-        /* Clean Footer */
         .footer-note {
             text-align: center;
             color: #8E8E93;
@@ -391,14 +398,92 @@
     <div class="container">
 
         <div class="header glass-panel">
-            <h1>Polymarket Intelligence Pipeline</h1>
+            <h1>BIT Polymarket Scanner Pipeline</h1>
             <p>Polymarket API → Stage 1 Filter (Rule Based) → Stage 2 Filter (LLM) → Supabase (DB) → Report & Dashboard
             </p>
         </div>
 
+        <!-- Dynamic Mermaid Graph Injection Container -->
         <div class="big-picture glass-panel">
-            <img src="polymarket_scanner_mindmap.svg" alt="BIT Capital Pipeline Architecture Mindmap"
-                style="width: 100%; height: auto; display: block; margin: 0 auto;">
+            <div class="mermaid">
+                flowchart LR
+
+                E[Extract] --> S1 --> INC --> S2 --> DB --> RPT
+
+                subgraph EXT["1 · Extraction — ingest.py"]
+                direction TB
+                E1["Polymarket REST API\npagination"] --> E2["3000 events default\n--max-events flag"] --> E3["Page size
+                500\noffset increments"] --> E4["~32000 markets\nraw DataFrame"]
+                end
+
+                subgraph S1["2a · Stage 1 Filter — stage1_filter.py"]
+                direction TB
+                F1["0a/0b · Zero volume and missing price"] --> F2["1 · Expired markets"] --> F3["2 · Fully resolved
+                YES=0 or 1"] --> F4["3 · Near-certain YES under 4% or over 96%"] --> F5["4 · Irrelevant tags\nsports,
+                celebrity, weather"] --> F6["5/6 · Dedup by event + min $5k volume"] --> S1OUT["~75 markets kept 0.2%"]
+                end
+
+                subgraph INC["2.5 · Incremental Filter"]
+                direction TB
+                I1["New ~7 markets\nnever seen, to LLM"]
+                I2["Known ~70 markets\nprice refresh only"]
+                I3["95% LLM cost reduction\non mature runs"]
+                end
+
+                subgraph S2["2b · Stage 2 Three-pass LLM — stage2_filter.py"]
+                direction TB
+                P1["Pass 1 — Mistral Small\nBinary SIGNAL or NOISE\nbatch=20, fail open"] --> P2["Pass 2 — Llama 4
+                Scout\nMarket to ticker mapping\nbatch=10, fail closed"] --> PB["Pass B — Llama 4 Scout\nSentiment,
+                score 1-10\nreasoning with dollar figure"]
+                end
+
+                subgraph DB["3 · Supabase DB"]
+                direction TB
+                DB1[("signals 280+ rows")]
+                DB2[("signal_feed view")]
+                DB3[("reports")]
+                DB4[("signal_outcomes")]
+                DB5[("stock_prices")]
+                end
+
+                subgraph RPT["4 · Report — report_generator.py"]
+                direction TB
+                R1["Top 30 signals\nby impact_score"] --> R2["Live prices\nYahoo Finance + FMP"] --> R3["Crowd vs
+                Reality\nDDGS news divergence"] --> R4["Gemini 2.5 Flash\ntemp=0.1, 16k tokens\nGroq fallback"] -->
+                ROUT["6-section Alpha Report\nsaved to DB"]
+                end
+
+                subgraph PX["Prices — prices.py"]
+                direction TB
+                PX1["For report\ndict to LLM prompt"]
+                PX2["For dashboard\nStreamlit Holdings tab"]
+                end
+
+                subgraph BT["Backtesting — backtest.py"]
+                direction TB
+                BT1["First data June 17 2026"] --> BT2["Sentiment vs actual move"] --> BT3["Accuracy by score range"]
+                end
+
+                subgraph EX["Extra Features"]
+                direction TB
+                EX1["Dig Deeper Analysis\nDDGS news + Groq\ncached 6h per signal"]
+                EX2["Polymarket Explorer\nAny market on demand\nportfolio impact analysis"]
+                end
+
+                RPT --> PX
+                RPT --> BT
+                RPT --> EX
+
+                style EXT fill:#e8f5e9,color:#1b5e20,stroke:#2e7d32
+                style S1 fill:#e3f2fd,color:#0d47a1,stroke:#1565c0
+                style INC fill:#f5f5f5,color:#212121,stroke:#757575
+                style S2 fill:#ede7f6,color:#311b92,stroke:#4527a0
+                style DB fill:#fff8e1,color:#e65100,stroke:#ef6c00
+                style RPT fill:#fce4ec,color:#880e4f,stroke:#ad1457
+                style PX fill:#e8f5e9,color:#1b5e20,stroke:#388e3c
+                style BT fill:#e8f5e9,color:#1b5e20,stroke:#388e3c
+                style EX fill:#fce4ec,color:#880e4f,stroke:#c2185b
+            </div>
         </div>
 
         <div class="section glass-panel extract">
@@ -462,7 +547,7 @@
                     </div>
                     <div class="incremental-box">
                         <strong style="display:block; margin-bottom: 6px;">⚡ Incremental filter (Step 2.5):</strong>
-                        <span style="color:#D1D1D6; font-size: 0.95rem;"> New markets (~7 per run) → sent to LLM. Known
+                        <span style="color:#3A3A3C; font-size: 0.95rem;"> New markets (~7 per run) → sent to LLM. Known
                             markets (~70 per run) → yes_price and volume refreshed via PATCH only. Results in 95%
                             reduction in LLM calls on mature runs.</span>
                     </div>
@@ -569,17 +654,19 @@
             <div class="section-body">
                 <div class="two-col">
                     <div class="sub-box">
-                        <div class="sub-title">Dig Deeper — dig_deeper.py</div>
-                        <p style="color:#D1D1D6; font-size:0.95rem;">Analyst clicks "Compare vs news" on any signal.
+                        <div class="sub-title">Dig Deeper — dig_deeper_analysis.py</div>
+                        <p style="color:#3A3A3C; font-size:0.95rem;">Analyst clicks "Compare vs news" on any signal.
                             Runs <strong>DDGS multi-query news search</strong>, extracts headlines with article bodies,
                             calls Groq for Agreement/Conflict analysis and directional call. Cached 6 hours in
                             deep_dives table to avoid redundant searches.</p>
                     </div>
                     <div class="sub-box">
-                        <div class="sub-title">Signal Search</div>
-                        <p style="color:#D1D1D6; font-size:0.95rem;">Keyword search across the signals DB directly from
-                            the Streamlit Signal Feed tab. Filters by question text or event title — lets the analyst
-                            quickly find specific markets without scrolling through all 280+ signals.</p>
+                        <div class="sub-title">Explore Market — explore_polymarket_news.py</div>
+                        <p style="color:#3A3A3C; font-size:0.95rem;">The <strong>Explore Market</strong> tab embeds an
+                            ad-hoc market
+                            explorer powered by pipeline/explore_polymarket_news.py. It lets you analyse any Polymarket
+                            event on demand — not just the ones surfaced by the automated pipeline — and instantly see
+                            how it relates to the BIT Capital portfolio.</p>
                     </div>
                 </div>
             </div>
