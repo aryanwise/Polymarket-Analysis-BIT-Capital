@@ -394,13 +394,17 @@ Is the portfolio risk-on or risk-off? Which cluster faces the most exposure?
 
 ## 2. Signal of the Week
 
-**Market:** [exact question from the highest-priority signal]
-**Probability:** [X%] — [one sentence on what this implies]
-**Price context:** [ticker] is at $[price] ([5D change]% over 5 days)
-**If YES:** [specific impact — name the ticker, give a number]
-**If NO:** [specific alternative for same ticker]
-**Transmission mechanism:** [event] → [what changes] → [P&L impact]
-**Actionable at:** [what probability threshold makes this a trade]
+Write each field on its own line. Press Enter after each value. Do NOT write them as a flowing paragraph.
+
+**Market:** [question]
+**Probability:** [X%] — [one sentence]
+**Price context:** [ticker] is at [price] ([5D]% over 5 days)
+**If YES:** [impact]
+**If NO:** [alternative]
+**Transmission mechanism:** [event] → [change] → [P&L]
+**Actionable at:** [threshold]
+
+Each field MUST start on a new line. No exceptions.
 
 ---
 
@@ -495,7 +499,10 @@ Repeat for 3-5 tickers maximum.
 For each: what happens to which holding if YES vs NO?
 
 ---
-*BIT Capital Signal Scanner | {date_str} | Polymarket-powered*"""
+*BIT Capital Signal Scanner | {date_str} | Polymarket-powered*
+
+CRITICAL: You must complete all 6 sections. Do not stop before Section 6 Risk Calendar.
+If you are running low on space, shorten earlier sections but always include Section 6."""
 
 
 # ─────────────────────────────────────────────────────────────
@@ -516,7 +523,7 @@ def call_gemini(prompt: str) -> str | None:
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
                 temperature=0.1,
-                max_output_tokens=8192,
+                max_output_tokens=16384,
             ),
         )
         return response.text
