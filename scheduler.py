@@ -68,7 +68,7 @@ signal.signal(signal.SIGTERM, _handle_shutdown)
 
 
 # ── Single run ────────────────────────────────────────────────
-def run_once(dry_run: bool = False) -> dict:
+def run_once(dry_run: bool = False, max_events: int = MAX_EVENTS) -> dict:
     """
     Executes the full pipeline once.
     Catches all exceptions so the scheduler never crashes.
@@ -86,7 +86,7 @@ def run_once(dry_run: bool = False) -> dict:
         from pipeline.run_pipeline import run_pipeline
 
         result = run_pipeline(
-            max_events=MAX_EVENTS,
+            max_events=max_events,
             dry_run=dry_run,
             skip_report=False,
         )
@@ -110,7 +110,7 @@ def run_once(dry_run: bool = False) -> dict:
 
 
 # ── Scheduler loop ────────────────────────────────────────────
-def schedule_loop(interval_hours: float, dry_run: bool = False):
+def schedule_loop(interval_hours: float, dry_run: bool = False, max_events: int = MAX_EVENTS):
     """
     Runs the pipeline immediately, then on a fixed interval.
     Uses Python's built-in sched — no external dependencies.
@@ -124,7 +124,7 @@ def schedule_loop(interval_hours: float, dry_run: bool = False):
             logger.info("Shutdown requested — exiting scheduler loop.")
             return
 
-        run_once(dry_run=dry_run)
+        run_once(dry_run=dry_run, max_events=max_events)
 
         if _shutdown_requested:
             logger.info("Shutdown requested — not scheduling next run.")
@@ -195,6 +195,10 @@ Examples:
         help=f"Hours between runs (default: {DEFAULT_INTERVAL_HOURS})",
     )
     parser.add_argument(
+        "--max-events", type=int, default=MAX_EVENTS,
+        help=f"Max markets to ingest (default: {MAX_EVENTS})",
+    )
+    parser.add_argument(
         "--once", action="store_true",
         help="Run once immediately and exit",
     )
@@ -205,8 +209,8 @@ Examples:
     args = parser.parse_args()
 
     if args.once:
-        result = run_once(dry_run=args.dry_run)
+        result = run_once(dry_run=args.dry_run, max_events=args.max_events)
         _print_run_summary()
         sys.exit(0 if result.get("status") == "success" else 1)
     else:
-        schedule_loop(interval_hours=args.interval, dry_run=args.dry_run)
+        schedule_loop(interval_hours=args.interval, dry_run=args.dry_run, max_events=args.max_events)
