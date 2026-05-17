@@ -44,6 +44,7 @@ scheduler.py                     ← orchestrates everything, runs every 6h
 ├── pipeline/dig_deeper_analysis.py ← on-demand deep dive w/ news search
 ├── pipeline/explore_polymarket_news.py ← ad-hoc market explorer
 ├── pipeline/real_time_price.py  ← Yahoo Finance price snapshots
+├── pipeline/backtest.py         ← signal accuracy evaluation post-expiry
 │
 ├── db/schema3.sql               ← Supabase schema (current)
 ├── utils/supabase_client.py     ← shared DB client
@@ -53,52 +54,64 @@ scheduler.py                     ← orchestrates everything, runs every 6h
 ### ETL Flow
 
 ```
-Polymarket API
+Polymarket API  (~32,000 markets)
      │
      ▼
-extract.py  ──→  ~3,000 raw markets
+stage1_filter.py  →  ~75 markets  (free, rule-based, <1 second)
+ [0a] Drop zero-volume
+ [0b] Drop missing YES price
+ [1]  Drop expired (end_date year < current year)
+ [2]  Drop fully resolved (YES = 0.0 or 1.0 exactly)
+ [3]  Drop near-certain (YES < 4% or > 96%)
+ [4]  Drop irrelevant tags (sports, celebrity, weather, junk crypto)
+ [5]  Dedup by event_id — signal quality = uncertainty×0.65 + volume×0.35
+ [6]  Drop low volume (< $5k)
      │
      ▼
-stage1_filter.py  ──→  ~50–150 markets (free, rule-based)
- • Drop zero-volume
- • Drop expired / resolved / near-certain (>96% / <4%)
- • Block irrelevant tags (sports, politics, entertainment, junk crypto)
- • Deduplicate by event_id (keep highest signal-quality market per event)
+Incremental filter  →  ~7 new markets / ~70 known refreshed
+ New markets  → sent to LLM
+ Known markets → yes_price + volume PATCH only (95% LLM cost reduction)
      │
      ▼
-stage2_filter.py  ──→  relevant signals (LLM, batched ×10)
- • Gemini 2.0 Flash primary → Groq Llama 3.3 70B fallback
- • Outputs: market_id × ticker pairs
- • Intentionally minimal — no sentiment, no scoring (done at report stage)
+stage2_filter.py  →  three-pass LLM
+ Pass 1: Mistral Small  — binary SIGNAL/NOISE gate
+         batch=20 · temp=0.0 · fail open (parse error → SIGNAL)
+ Pass 2: Llama 4 Scout  — maps market to specific tickers
+         batch=10 · temp=0.0 · fail closed (parse error → NOISE)
+ Pass B: Llama 4 Scout  — enriches each signal
+         batch=15 · temp=0.1 · sentiment + impact_score 1–10 + reasoning
      │
      ▼
-report_generator.py  ──→  Daily Alpha Report
- • Receives all signals with full portfolio context
- • Synthesises cross-cluster interactions
- • Outputs: risk posture, signal of the week, cluster analysis, recommendations table
+Supabase  →  signals written/updated, prices refreshed
      │
      ▼
-Supabase (signal_feed view)
+report_generator.py  →  Daily Alpha Report
+ • Fetches top 30 signals ordered by impact_score
+ • Injects live prices (Yahoo Finance: price, 1D/5D change, 52w range)
+ • Crowd vs Reality: DDGS news search → divergence score for top 3 signals
+ • Gemini 2.5 Flash (temp=0.1, 16k tokens) · Groq fallback
+ • 6-section report saved to DB
      │
      ▼
-streamlit_app.py  ──→  Live Dashboard
+streamlit_app.py  →  Live Dashboard
 ```
 
 ---
 
 ## Database Schema
 
-Five core tables (see `db/schema3.sql`):
+Six core tables + one view (see `db/schema3.sql`):
 
-| Table            | Purpose                                                  |
-| ---------------- | -------------------------------------------------------- |
-| `stocks`         | 14 BIT Capital holdings with thesis                      |
-| `signals`        | LLM-classified market × ticker pairs; central ETL output |
-| `reports`        | Daily Alpha Reports (markdown)                           |
-| `report_signals` | Join table: which signals fed which report               |
-| `deep_dives`     | On-demand analysis results (cached 6h)                   |
-
-**`signal_feed`** is a view joining `signals` + `stocks` — the primary query target for the dashboard.
+| Table             | Purpose                                                     |
+| ----------------- | ----------------------------------------------------------- |
+| `stocks`          | 14 BIT Capital holdings with thesis                         |
+| `signals`         | Enriched market × ticker pairs; central ETL output          |
+| `signal_feed`     | **View** — joins `signals` + `stocks`, primary query target |
+| `reports`         | Daily Alpha Reports (markdown + metadata)                   |
+| `report_signals`  | Junction table: which signals fed which report              |
+| `deep_dives`      | On-demand analysis results (cached 6h)                      |
+| `signal_outcomes` | Backtesting results post-expiry                             |
+| `stock_prices`    | Yahoo Finance price snapshots for historical lookup         |
 
 ---
 
@@ -108,7 +121,7 @@ Five core tables (see `db/schema3.sql`):
 
 - Python ≥ 3.12
 - Supabase account (free tier works)
-- API keys: Gemini, Groq, Tavily (optional for news search)
+- API keys: Gemini, Groq, Mistral, FMP (optional for analyst targets), Tavily (optional for news search)
 
 ### Installation
 
@@ -130,7 +143,8 @@ SUPABASE_SERVICE_KEY=your-service-key
 GEMINI_API_KEY=your-gemini-key
 GROQ_API_KEY=your-groq-key
 TAVILY_API_KEY=your-tavily-key   # optional, used in explore tab
-MISTRAL_API_KEY=your-mistral-key # optional fallback
+MISTRAL_API_KEY=your-mistral-key     # Pass 1 gate
+FMP_API_KEY=your-fmp-key             # optional, analyst price targets
 ```
 
 ### Database
@@ -162,6 +176,12 @@ python scheduler.py
 python scheduler.py --interval 4
 ```
 
+### With custom ingest size
+
+```bash
+python run scheduler.py --once --max-events 10000
+```
+
 ### Dry run (no DB writes)
 
 ```bash
@@ -177,24 +197,25 @@ streamlit run webapp/streamlit_app.py
 ### Pipeline flags
 
 ```
---max-events N    Max Polymarket events to ingest (default: 3000)
+--max-events N    Max Polymarket markets to ingest (default: 3000)
 --dry-run         Run without writing to database
 --skip-report     Skip Alpha Report generation
 --once            Run once and exit
---interval N      Hours between scheduled runs
+--interval N      Hours between scheduled runs (default: 6)
 ```
 
 ---
 
 ## Dashboard Tabs
 
-| Tab             | Description                                                                 |
-| --------------- | --------------------------------------------------------------------------- |
-| **Overview**    | Hero metrics, cluster summaries, top signals                                |
-| **Signal Feed** | Full filtered signal list + inline deep-dive analysis + Polymarket explorer |
-| **Reports**     | Browsable history of LLM Alpha Reports with download                        |
-| **Holdings**    | Live price cards + signal coverage table                                    |
-| **Configure**   | Holdings management by cluster                                              |
+| Tab                  | Description                                                   |
+| -------------------- | ------------------------------------------------------------- |
+| **Overview**         | Hero metrics, cluster summaries, top signals                  |
+| **Signal Feed**      | Full signal list + inline deep-dive analysis + keyword search |
+| **Reports**          | Browsable history of Alpha Reports with download              |
+| **Holdings**         | Live price monitor + signal coverage per ticker               |
+| **Crowd vs Reality** | News divergence analysis for high-score signals               |
+| **Configure**        | Holdings management by cluster                                |
 
 ---
 
@@ -335,51 +356,90 @@ Separate from the explorer, each signal in the feed has a **"Compare Against New
 
 **Steps:**
 
-1. Checks `deep_dives` table for a cached result less than 6 hours old — returns immediately if found
-2. Fetches the full signal from the `signal_feed` view (includes question, YES price, ticker, company context)
-3. Builds 2–3 targeted DuckDuckGo search queries extracted from the market question text — not from NULL Stage 2 fields, so it works even for recently classified signals
-4. Fetches articles including body text (first 150 chars) for richer LLM context; deduplicates across queries
-5. Runs **Groq Llama 3.3 70B** to produce a three-section briefing
-6. Extracts directional call (Bullish / Bearish / Neutral) from the "Short-term Direction" section specifically — scoped to avoid false positives from phrases like "not bullish" elsewhere in the text
+1. Checks `deep_dives` table for a cached result less than 6 hours old
+2. Fetches the signal from `signal_feed` view
+3. Builds 2–3 targeted DuckDuckGo search queries from the market question text
+4. Fetches articles including body text for richer LLM context; deduplicates across queries
+5. Runs Groq Llama 4 Scout to produce a three-section briefing
+6. Extracts directional call (Bullish / Bearish / Neutral) scoped to the direction section only
 7. Saves to `deep_dives` and renders inline under the signal card with source links
 
 **Deep Dive sections:**
 
-| Section                   | Content                                                                                                                            |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **Agreement or Conflict** | Does the news support or contradict the Polymarket probability? References specific headlines by number                            |
-| **Short-term Direction**  | States the directional call for the ticker clearly: Bullish / Bearish / Neutral, plus one specific catalyst or risk event to watch |
-| **Reasoning**             | Connects the YES% probability to what the news says. Identifies what would need to change for the thesis to break                  |
+| Section                   | Content                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Agreement or Conflict** | Does news support or contradict the Polymarket probability? References specific headlines          |
+| **Short-term Direction**  | Directional call for the ticker: Bullish / Bearish / Neutral + one catalyst to watch               |
+| **Reasoning**             | Connects the YES% probability to what news says. What would need to change for the thesis to break |
+
+---
+
+## Crowd vs Reality
+
+For the top 3 signals by impact score each run, the pipeline compares Polymarket crowd pricing against live mainstream news consensus to identify information gaps.
+
+**How it works:**
+
+1. DDGS multi-query news search per signal (3 targeted queries from question text)
+2. Groq assesses news sentiment (Bullish / Bearish / Neutral) and confidence
+3. Rule-based divergence calculation: Polymarket direction vs news direction
+4. HIGH divergence = crowd and news pointing opposite directions = potential alpha
+   **Divergence labels:**
+
+| Label     | Meaning                                                            |
+| --------- | ------------------------------------------------------------------ |
+| 🔴 HIGH   | Polymarket and news pointing opposite directions — information gap |
+| 🟡 MEDIUM | Uncertain signal, one side less confident                          |
+| 🟢 LOW    | Crowd and news broadly aligned                                     |
+| ⚪ NONE   | Fully aligned — consensus, no edge                                 |
+
+---
+
+## Backtesting
+
+`pipeline/backtest.py` evaluates signal accuracy against resolved market outcomes.
+
+**First data: June 17, 2026** — Fed meeting markets are the first to expire.
+
+```bash
+uv run pipeline/backtest.py           # evaluate + write results
+uv run pipeline/backtest.py --report  # accuracy report only
+uv run pipeline/backtest.py --dry-run # preview without DB writes
+```
+
+**Key metric:** Do impact_score 8–10 signals have higher directional accuracy than score 3–5? If yes, the scoring model generates real alpha.
 
 ---
 
 ## LLM Design Decisions
 
-**Stage 2 is intentionally minimal.** It only answers: _is this relevant, and which tickers does it affect?_ Sentiment, impact scoring, and reasoning are deferred to the report stage where the LLM has full portfolio context across all signals simultaneously — producing higher quality, cross-cluster synthesis.
+**Three-pass Stage 2.** Classification and enrichment are different cognitive tasks. Pass 1 (Mistral) is permissive and fast — binary yes/no on whether a market is thematically relevant. Pass 2 (Groq) is precise — maps to specific tickers. Pass B (Groq) reasons about P&L impact. Each model does one focused job; combining them hurts both.
 
-**Gemini → Groq fallback** is used throughout the pipeline. If Gemini rate-limits or fails, Groq picks up automatically with no interruption.
+**Fail open at the gate, fail closed at the classifier.** Mistral defaults to SIGNAL on parse error — missing a real signal is worse than one extra Groq call. Groq defaults to NOISE on parse error — nothing garbage should be written to the DB.
 
-**Mistral primary in the explorer.** The ad-hoc explorer uses Mistral Large as primary (stronger instruction-following for the structured `TICKER → impact` output format) with Gemini as fallback.
+**Report reasoning deferred.** The report LLM receives all 17+ unique markets with live prices for all 14 holdings simultaneously. It can say "IREN is down 12% this week AND a new country buying Bitcoin is priced at 39% — this is an entry point." That cross-cluster synthesis is only possible with full context.
 
-**Incremental processing.** Markets already classified in `signals` are skipped by the LLM on subsequent pipeline runs. Only new markets get classified. Known markets receive price/volume refreshes only — no extra LLM cost.
-
----
+## **Incremental processing.** Markets already in `signals` are skipped by the LLM. Only new markets get classified. Known markets receive price/volume refreshes via PATCH — no LLM cost.
 
 ## Stage 1 Filter Logic
 
-The tag blocklist in `pipeline/irrelevant_tags.py` covers approximately 500 tags across these categories:
+The tag blocklist in `pipeline/irrelevant_tags.py` covers ~500 tags across:
 
-- Sports (NFL, NBA, MLB, EPL, F1, UFC, esports, individual athletes...)
-- Entertainment (Oscars, Grammys, celebrity gossip, box office, music...)
-- Pure domestic politics (state primaries, midterms, local elections...)
+- Sports (NFL, NBA, MLB, EPL, F1, UFC, esports...)
+- Entertainment (Oscars, Grammys, celebrity, box office...)
+- Pure domestic politics (state primaries, local elections...)
 - Weather and natural disasters
-- Junk crypto (NFTs, memecoins, token launches, airdrop speculation...)
-- Internal Polymarket housekeeping tags (rewards tiers, recurring flags...)
-- Diplomatic meetings with no concrete trade or policy outcome
+- Junk crypto (NFTs, memecoins, token launches...)
+- Polymarket housekeeping tags
+  The deduplication step keeps only the highest signal-quality market per event using:
 
-Markets are also removed if: volume = 0, YES price is missing, expiry year is in the past, fully resolved (exactly 0% or 100%), or near-certain (below 4% or above 96%).
+```python
+signal_quality = uncertainty * 0.65 + volume_score * 0.35
+# uncertainty = 1 - abs(yes_price - 0.5) * 2  →  1.0 at 50%, 0.0 at extremes
+# volume_score = min(volume / 1_000_000, 1.0)  →  capped at $1M
+```
 
-After tag filtering, an additional deduplication step keeps only the highest signal-quality market per event (scored as `uncertainty × 0.65 + volume_score × 0.35`), preventing 20+ near-identical threshold variants of the same Fed decision from all hitting Stage 2.
+This prevents 20+ near-identical Fed rate threshold markets from all hitting Stage 2.
 
 ---
 
@@ -396,6 +456,8 @@ pipeline/
   dig_deeper_analysis.py     — on-demand per-signal deep dive
   explore_polymarket_news.py — ad-hoc Polymarket explorer
   real_time_price.py         — Yahoo Finance price cache
+  backtest.py                — signal accuracy evaluator
+  backfill_enrichment.py     — one-time enrichment script
 db/
   schema3.sql                — current production schema
   schema2.sql                — previous schema (reference)
@@ -413,16 +475,17 @@ webapp/
 | Layer                   | Technology                                        |
 | ----------------------- | ------------------------------------------------- |
 | Data source             | Polymarket Gamma API                              |
-| LLM (pipeline primary)  | Google Gemini 2.0 Flash / 2.5 Flash Lite          |
-| LLM (pipeline fallback) | Groq — Llama 3.3 70B Versatile                    |
-| LLM (explorer primary)  | Mistral Large                                     |
-| LLM (explorer fallback) | Google Gemini 2.5 Flash Lite                      |
+| LLM — Pass 1 gate       | Mistral Small                                     |
+| LLM — Pass 2 classifier | Groq Llama 4 Scout                                |
+| LLM — Pass B enrichment | Groq Llama 4 Scout                                |
+| LLM — report (primary)  | Gemini 2.5 Flash                                  |
+| LLM — report (fallback) | Groq Llama 4 Scout                                |
 | News search (explorer)  | Tavily (advanced depth)                           |
 | News search (deep dive) | DuckDuckGo (ddgs), multi-query with deduplication |
+| Stock prices            | Yahoo Finance (yfinance) + FMP analyst targets    |
 | Database                | Supabase (PostgreSQL + RLS)                       |
-| Stock prices            | yfinance                                          |
 | Frontend                | Streamlit                                         |
-| Scheduling              | Python `sched` (built-in, no extra dependency)    |
+| Scheduling              | Python `sched` + GitHub Actions (every 6h)        |
 | Deployment              | Streamlit Cloud                                   |
 
 ---
@@ -436,7 +499,7 @@ For your own deployment:
 1. Fork this repo
 2. Connect to [share.streamlit.io](https://share.streamlit.io)
 3. Set main file: `webapp/streamlit_app.py`
-4. Add all environment variables in the Streamlit Secrets manager
-5. The scheduler must run separately (cron job, Railway, Render, etc.) — Streamlit Cloud does not support background processes
+4. Add all environment variables in Streamlit Secrets
+5. Run the scheduler separately — Streamlit Cloud does not support background processes. Use GitHub Actions (`.github/workflows/pipeline.yml` included) or a cron job on Railway/Render
 
 ---
