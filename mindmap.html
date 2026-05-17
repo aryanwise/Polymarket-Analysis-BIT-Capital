@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polymarket Intelligence Pipeline</title>
+    <style>
+        /* Global Reset & Base Setup */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        :root {
+            /* iOS Style Color Palette */
+            --ios-blue: #0A84FF;
+            --ios-orange: #FF9F0A;
+            --ios-purple: #BF5AF2;
+            --ios-green: #32D74B;
+            --ios-pink: #FF375F;
+
+            /* Grayish Glass Theme Variables */
+            --glass-bg: rgba(44, 44, 46, 0.45);
+            /* Sleek, neutral gray frosted panel */
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-highlight: rgba(255, 255, 255, 0.12);
+            --easing: cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        /* iOS Mesh Gradient Background - Gray/Silver Edition */
+        body {
+            /* Authentic Apple-like typography stack */
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #111112;
+            /* Deep charcoal base */
+            background-image:
+                radial-gradient(circle at 15% 20%, rgba(142, 142, 147, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 85% 30%, rgba(99, 99, 102, 0.15) 0%, transparent 45%),
+                radial-gradient(circle at 50% 80%, rgba(174, 174, 178, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 80% 90%, rgba(72, 72, 74, 0.15) 0%, transparent 45%);
+            background-attachment: fixed;
+            color: #F2F2F7;
+            line-height: 1.5;
+            padding: 50px 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Reusable iOS Glass Class */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            transition: transform 0.4s var(--easing), box-shadow 0.4s var(--easing), background 0.4s var(--easing);
+        }
+
+        /* Header Component */
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 40px 20px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #FFFFFF 0%, #A1A1AA 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+            letter-spacing: -0.03em;
+        }
+
+        .header p {
+            color: #98989D;
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+
+        /* Big Picture Image Container */
+        .big-picture {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 50px;
+            padding: 30px;
+        }
+
+        .big-picture img {
+            filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
+            transition: transform 0.5s var(--easing);
+        }
+
+        .big-picture:hover img {
+            transform: scale(1.02);
+        }
+
+        /* Interactive Section Cards */
+        .section {
+            margin-bottom: 25px;
+            overflow: hidden;
+            border-radius: 24px;
+        }
+
+        .section:hover {
+            transform: translateY(-4px) scale(1.005);
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            background: rgba(60, 60, 65, 0.45);
+            /* Slightly lighter gray glass on hover */
+        }
+
+        .section-header {
+            padding: 18px 24px;
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            letter-spacing: -0.01em;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* iOS Notification Badge Style for Numbers */
+        .section-header span {
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1rem;
+            font-weight: 700;
+            color: #FFF;
+        }
+
+        .section-body {
+            padding: 24px;
+        }
+
+        /* Vibrant iOS Accent Colors (These now pop perfectly against the gray) */
+        .extract {
+            border-left: 4px solid var(--ios-blue);
+        }
+
+        .extract .section-header {
+            background: linear-gradient(90deg, rgba(10, 132, 255, 0.1) 0%, transparent 100%);
+            color: var(--ios-blue);
+        }
+
+        .extract .section-header span {
+            background: var(--ios-blue);
+        }
+
+        .filter {
+            border-left: 4px solid var(--ios-orange);
+        }
+
+        .filter .section-header {
+            background: linear-gradient(90deg, rgba(255, 159, 10, 0.1) 0%, transparent 100%);
+            color: var(--ios-orange);
+        }
+
+        .filter .section-header span {
+            background: var(--ios-orange);
+        }
+
+        .db {
+            border-left: 4px solid var(--ios-purple);
+        }
+
+        .db .section-header {
+            background: linear-gradient(90deg, rgba(191, 90, 242, 0.1) 0%, transparent 100%);
+            color: var(--ios-purple);
+        }
+
+        .db .section-header span {
+            background: var(--ios-purple);
+        }
+
+        .report {
+            border-left: 4px solid var(--ios-green);
+        }
+
+        .report .section-header {
+            background: linear-gradient(90deg, rgba(50, 215, 75, 0.1) 0%, transparent 100%);
+            color: var(--ios-green);
+        }
+
+        .report .section-header span {
+            background: var(--ios-green);
+        }
+
+        .extra {
+            border-left: 4px solid var(--ios-pink);
+        }
+
+        .extra .section-header {
+            background: linear-gradient(90deg, rgba(255, 55, 95, 0.1) 0%, transparent 100%);
+            color: var(--ios-pink);
+        }
+
+        .extra .section-header span {
+            background: var(--ios-pink);
+        }
+
+        /* Typography & Lists */
+        .item-list {
+            list-style: none;
+        }
+
+        .item-list li {
+            padding: 10px 0 10px 28px;
+            position: relative;
+            color: #D1D1D6;
+            font-size: 1rem;
+        }
+
+        /* Sleek chevron for list items */
+        .item-list li::before {
+            content: "›";
+            position: absolute;
+            left: 6px;
+            color: #8E8E93;
+            font-weight: 500;
+            font-size: 1.4rem;
+            line-height: 1;
+            top: 6px;
+        }
+
+        .item-list li strong {
+            color: #FFFFFF;
+            font-weight: 600;
+        }
+
+        /* Inner Glass Cards (Recessed Look) */
+        .sub-box,
+        .pass-card,
+        .edge-card {
+            background: rgba(28, 28, 30, 0.5);
+            /* Deep inset gray */
+            border-radius: 18px;
+            padding: 20px;
+            margin: 14px 0;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: background 0.3s ease, border 0.3s ease;
+        }
+
+        .sub-box:hover,
+        .pass-card:hover,
+        .edge-card:hover {
+            background: rgba(58, 58, 60, 0.5);
+            /* Slightly lighter inset gray on hover */
+            border: 1px solid rgba(255, 255, 255, 0.09);
+        }
+
+        .sub-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #EBEBF5;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+        }
+
+        /* iOS Pill-Style Tags */
+        .tag {
+            display: inline-flex;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #FFFFFF;
+            margin-top: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Layout Grids */
+        .pass-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .pass-card h4 {
+            color: var(--ios-orange);
+            margin-bottom: 8px;
+            font-size: 1.05rem;
+            font-weight: 600;
+        }
+
+        .pass-card p {
+            font-size: 0.95rem;
+            color: #D1D1D6;
+        }
+
+        .edge-box {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        .edge-card.fail-open {
+            border-left: 3px solid var(--ios-orange);
+        }
+
+        .edge-card.fail-closed {
+            border-left: 3px solid #FF453A;
+        }
+
+        .edge-card h4 {
+            margin-bottom: 8px;
+            font-size: 1.05rem;
+        }
+
+        .edge-card.fail-open h4 {
+            color: var(--ios-orange);
+        }
+
+        .edge-card.fail-closed h4 {
+            color: #FF453A;
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        /* Dynamic Island-style Incremental Box */
+        .incremental-box {
+            background: rgba(28, 28, 30, 0.6);
+            border: 1px solid rgba(50, 215, 75, 0.3);
+            border-radius: 20px;
+            padding: 16px 20px;
+            margin-top: 16px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(20px);
+        }
+
+        .incremental-box strong {
+            color: var(--ios-green);
+            font-size: 1.05rem;
+        }
+
+        /* Clean Footer */
+        .footer-note {
+            text-align: center;
+            color: #8E8E93;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-top: 50px;
+            padding: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        @media (max-width: 768px) {
+
+            .two-col,
+            .edge-box,
+            .pass-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <div class="header glass-panel">
+            <h1>Polymarket Intelligence Pipeline</h1>
+            <p>Polymarket API → Stage 1 Filter (Rule Based) → Stage 2 Filter (LLM) → Supabase (DB) → Report & Dashboard
+            </p>
+        </div>
+
+        <div class="big-picture glass-panel">
+            <img src="polymarket_scanner_mindmap.svg" alt="BIT Capital Pipeline Architecture Mindmap"
+                style="width: 100%; height: auto; display: block; margin: 0 auto;">
+        </div>
+
+        <div class="section glass-panel extract">
+            <div class="section-header">
+                <span>1</span> Polymarket Extraction
+            </div>
+            <div class="section-body">
+                <ul class="item-list">
+                    <li>Hits Polymarket API with <strong>pagination</strong></li>
+                    <li>Default max events: <strong>3 000</strong> — configurable via <code>--max-events</code> flag
+                    </li>
+                    <li>Page size: <strong>500 per request</strong></li>
+                    <li>Offset starts at <strong>0</strong>, increments per batch</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section glass-panel filter">
+            <div class="section-header">
+                <span>2</span> Filtering & Enrichment
+            </div>
+            <div class="section-body">
+
+                <div class="sub-box">
+                    <div class="sub-title">Stage 1 — Rule-Based Filtering</div>
+                    <ul class="item-list">
+                        <li><strong>Zero volume & missing prices</strong> — Drop markets with no liquidity or absent
+                            price data</li>
+                        <li><strong>Expired markets</strong> — Remove past end-date events</li>
+                        <li><strong>Fully resolved markets</strong> — Cut already settled outcomes</li>
+                        <li><strong>Near-certain ones</strong> — Skip YES &lt; 4% or &gt; 96% (no actionable
+                            uncertainty)</li>
+                        <li><strong>Irrelevant tags</strong> — Filter by non-target categories</li>
+                        <li><strong>Dedup by event</strong> — One market per event using signal quality score:
+                            uncertainty × 0.65 + volume × 0.35</li>
+                        <li><strong>Minimum volume $5k</strong> — Low liquidity = unreliable probability signal</li>
+                    </ul>
+                </div>
+
+                <div class="sub-box">
+                    <div class="sub-title">Stage 2 — Three-Pass LLM Pipeline</div>
+                    <div class="pass-grid">
+                        <div class="pass-card">
+                            <h4>Pass 1 — Mistral gate</h4>
+                            <p>Fast binary SIGNAL / NOISE on every market. <strong>Fail-open</strong> — on parse error
+                                defaults to SIGNAL so nothing slips through.</p>
+                            <span class="tag">Mistral Small · temp=0.0 · batch=20</span>
+                        </div>
+                        <div class="pass-card">
+                            <h4>Pass 2 — Groq classifier</h4>
+                            <p>Maps each market to specific tickers from the 14 holdings. <strong>Fail-closed</strong> —
+                                on parse error returns NOISE, nothing wrong written to DB.</p>
+                            <span class="tag">Llama 4 Scout · temp=0.0 · batch=10</span>
+                        </div>
+                        <div class="pass-card">
+                            <h4>Pass B — Groq enrichment</h4>
+                            <p>Fills sentiment (Bullish/Bearish/Neutral), impact_score 1–10, and reasoning with a
+                                specific dollar figure for every signal.</p>
+                            <span class="tag">Llama 4 Scout · temp=0.1 · batch=15</span>
+                        </div>
+                    </div>
+                    <div class="incremental-box">
+                        <strong style="display:block; margin-bottom: 6px;">⚡ Incremental filter (Step 2.5):</strong>
+                        <span style="color:#D1D1D6; font-size: 0.95rem;"> New markets (~7 per run) → sent to LLM. Known
+                            markets (~70 per run) → yes_price and volume refreshed via PATCH only. Results in 95%
+                            reduction in LLM calls on mature runs.</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="section glass-panel db">
+            <div class="section-header">
+                <span>DB</span> Supabase Data Layer
+            </div>
+            <div class="section-body">
+                <ul class="item-list">
+                    <li><strong>signals</strong> — core table · 280+ rows · market_id, ticker, yes_price, sentiment,
+                        impact_score, reasoning</li>
+                    <li><strong>signal_feed</strong> — VIEW that joins signals with stocks (adds company name, thesis,
+                        sector)</li>
+                    <li><strong>reports</strong> — generated markdown reports with metadata (model used, tickers, signal
+                        count)</li>
+                    <li><strong>report_signals</strong> — junction table linking each report to the signals it
+                        referenced</li>
+                    <li><strong>signal_outcomes</strong> — backtesting results, first data June 17 2026</li>
+                    <li><strong>stock_prices</strong> — price snapshots from Yahoo Finance for historical lookup</li>
+                    <li><strong>Upsert logic</strong> — ON CONFLICT (market_id, ticker) DO UPDATE keeps prices fresh
+                        without duplicates</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section glass-panel report">
+            <div class="section-header">
+                <span>3</span> Report Generation & Live Dashboard
+            </div>
+            <div class="section-body">
+
+                <div class="sub-box">
+                    <div class="sub-title">Report Flow</div>
+                    <ul class="item-list">
+                        <li>Fetch top 30 signals from signal_feed ordered by <strong>impact_score</strong></li>
+                        <li><strong>Price context</strong> — Yahoo Finance injects live price, 1D/5D change, 52-week
+                            range position, FMP analyst targets for all 14 holdings into the prompt</li>
+                        <li><strong>Crowd vs Reality</strong> — DDGS news search on top 3 signals · Groq computes news
+                            sentiment vs Polymarket probability · HIGH divergence = information gap = alpha</li>
+                        <li><strong>Gemini 2.5 Flash</strong> generates the report · temp=0.1 · 16k tokens · Groq Llama
+                            4 Scout as fallback</li>
+                        <li>Crowd vs Reality section injected via post-processing (not through LLM) to preserve content
+                        </li>
+                        <li>Report saved to DB · signals linked via report_signals junction table</li>
+                    </ul>
+                </div>
+
+                <div class="sub-box">
+                    <div class="sub-title">Edge Case Handling</div>
+                    <div class="edge-box">
+                        <div class="edge-card fail-open">
+                            <h4>Fail Open — Mistral (Pass 1)</h4>
+                            <p><strong>On parse error → defaults to SIGNAL.</strong> Missing a real signal costs more
+                                than one extra Groq call. False positives are cheap.</p>
+                            <span class="tag">batch=20 · temp=0.0</span>
+                        </div>
+                        <div class="edge-card fail-closed">
+                            <h4>Fail Closed — Groq (Pass 2)</h4>
+                            <p><strong>On parse error → returns NOISE.</strong> At classification stage precision
+                                matters — nothing wrong should be written to DB. False negatives are acceptable.</p>
+                            <span class="tag">batch=10 · temp=0.0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sub-box">
+                    <div class="sub-title">Real-time Prices — prices.py</div>
+                    <ul class="item-list">
+                        <li><strong>Two consumers:</strong> report generator (dict injected into LLM prompt) and
+                            Streamlit Holdings tab (list for price cards)</li>
+                        <li>Yahoo Finance: current price · 1D change · 5D change · 52-week high/low · range position
+                            label</li>
+                        <li>FMP (optional): analyst price targets and upside % for all 14 holdings</li>
+                        <li>Saved to stock_prices table each run for historical backtesting lookup</li>
+                    </ul>
+                </div>
+
+                <div class="sub-box">
+                    <div class="sub-title">Backtesting — backtest.py</div>
+                    <ul class="item-list">
+                        <li><strong>First data: June 17 2026</strong> — Fed meeting markets are first to expire</li>
+                        <li>Finds signals where end_date &lt; today · checks YES price ≥ 0.92 = resolved YES, ≤ 0.08 =
+                            resolved NO</li>
+                        <li>Fetches stock price at signal creation vs expiry via yfinance · checks if sentiment
+                            direction matched actual move</li>
+                        <li>Key metric: do impact_score 8–10 signals have higher accuracy than score 3–5? If yes, the
+                            scoring model generates real alpha</li>
+                        <li>Results written to signal_outcomes table</li>
+                    </ul>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="section glass-panel extra">
+            <div class="section-header">
+                <span>+</span> Extra Features
+            </div>
+            <div class="section-body">
+                <div class="two-col">
+                    <div class="sub-box">
+                        <div class="sub-title">Dig Deeper — dig_deeper.py</div>
+                        <p style="color:#D1D1D6; font-size:0.95rem;">Analyst clicks "Compare vs news" on any signal.
+                            Runs <strong>DDGS multi-query news search</strong>, extracts headlines with article bodies,
+                            calls Groq for Agreement/Conflict analysis and directional call. Cached 6 hours in
+                            deep_dives table to avoid redundant searches.</p>
+                    </div>
+                    <div class="sub-box">
+                        <div class="sub-title">Signal Search</div>
+                        <p style="color:#D1D1D6; font-size:0.95rem;">Keyword search across the signals DB directly from
+                            the Streamlit Signal Feed tab. Filters by question text or event title — lets the analyst
+                            quickly find specific markets without scrolling through all 280+ signals.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-note">
+            BIT Capital · Polymarket Signal Scanner
+        </div>
+
+    </div>
+</body>
+
+</html>
