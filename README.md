@@ -45,6 +45,7 @@ scheduler.py                     ← orchestrates everything, runs every 6h
 ├── pipeline/explore_polymarket_news.py ← ad-hoc market explorer
 ├── pipeline/real_time_price.py  ← Yahoo Finance price snapshots
 ├── pipeline/backtest.py         ← signal accuracy evaluation post-expiry
+├── backfill_enrichment.py     — one-time enrichment script
 │
 ├── db/schema3.sql               ← Supabase schema (current)
 ├── utils/supabase_client.py     ← shared DB client
